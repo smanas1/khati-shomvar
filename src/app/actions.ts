@@ -3,8 +3,17 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 
-// ১. টেন্যান্ট লোড করা (না থাকলে অটোমেটিক "খাঁটি সম্ভার" তৈরি হবে)
+// ─── Auth Helper ───────────────────────────────────────────────────────────────
+async function requireAdmin() {
+  const cookieStore = await cookies();
+  if (cookieStore.get("khati_admin_session")?.value !== "authenticated") {
+    throw new Error("অননুমোদিত অ্যাক্সেস! শুধুমাত্র অ্যাডমিনরা এই কাজ করতে পারবেন।");
+  }
+}
+
+// ─── 1. টেন্যান্ট লোড করা ────────────────────────────────────────────────────
 export async function getOrInitTenant(slug: string = "khati-shombhar") {
   let tenant = await prisma.tenant.findUnique({
     where: { slug },
@@ -55,11 +64,11 @@ export async function getOrInitTenant(slug: string = "khati-shombhar") {
                 { unit: "১০ কেজি", price: 850 },
                 { unit: "২০ কেজি", price: 1600 },
               ]),
-              description: "সম্পূর্ণ প্রাকৃতিকভাবে গাছপাকা, মিষ্টি ও সুস্বাদু সেরা জাতের আম। কোনো কার্বাইড বা কেমিক্যাল ছাড়া সরাসরি বাগান থেকে সংগৃহীত।",
+              description: "সম্পূর্ণ প্রাকৃতিকভাবে গাছপাকা, মিষ্টি ও সুস্বাদু সেরা জাতের আম।",
             },
             {
-              name: "১০০% খাঁটি খেজুরের গুড়",
-              category: "গুড়",
+              name: "১০০% খাঁটি খেজুরের গুড়",
+              category: "গুড়",
               unit: "পাটালি (৫০০ গ্রাম)",
               price: 220,
               stock: 40,
@@ -69,10 +78,10 @@ export async function getOrInitTenant(slug: string = "khati-shombhar") {
               variants: JSON.stringify([
                 { unit: "পাটালি (৫০০ গ্রাম)", price: 220 },
                 { unit: "পাটালি (১ কেজি)", price: 420 },
-                { unit: "ঝোলা গুড় (১ কেজি)", price: 450 },
-                { unit: "দানা গুড় (১ কেজি)", price: 450 },
+                { unit: "ঝোলা গুড় (১ কেজি)", price: 450 },
+                { unit: "দানা গুড় (১ কেজি)", price: 450 },
               ]),
-              description: "কোনো চিনি, হাইড্রোজ বা কেমিক্যাল ছাড়া তৈরি খাঁটি খেজুরের গুড়। আপনার পছন্দমতো ঐতিহ্যবাহী পাটালি, সুস্বাদু ঝোলা কিংবা দানা গুড়।",
+              description: "কোনো চিনি, হাইড্রোজ বা কেমিক্যাল ছাড়া তৈরি খাঁটি খেজুরের গুড়।",
             },
           ],
         },
@@ -87,8 +96,9 @@ export async function getOrInitTenant(slug: string = "khati-shombhar") {
   return tenant;
 }
 
-// ২. নতুন প্রোডাক্ট যোগ করা (Admin)
+// ─── 2. নতুন প্রোডাক্ট যোগ করা (Admin) ────────────────────────────────────
 export async function createProductAction(tenantId: string, slug: string, formData: FormData) {
+  await requireAdmin();
   const imageUrl = String(formData.get("image") || "").trim();
   const variantsRaw = String(formData.get("variants") || "").trim();
   await prisma.product.create({
@@ -107,15 +117,33 @@ export async function createProductAction(tenantId: string, slug: string, formDa
     },
   });
   revalidatePath(`/${slug}`);
+  revalidatePath(`/${slug}/admin`);
 }
 
-// ৩. প্রোডাক্ট ডিলিট করা (Admin)
+// ─── 3. প্রোডাক্ট ডিলিট করা (Admin) ────────────────────────────────────────
 export async function deleteProductAction(productId: string, slug: string) {
+  await requireAdmin();
   await prisma.product.delete({ where: { id: productId } });
   revalidatePath(`/${slug}`);
+  revalidatePath(`/${slug}/admin`);
 }
 
-// ৪. কাস্টমার অর্ডার সাবমিট করা
+// ─── 4. প্রোডাক্ট স্টক/মূল্য আপডেট (Admin) ─────────────────────────────────
+export async function updateProductAction(
+  productId: string,
+  slug: string,
+  data: { stock?: number; price?: number; name?: string; description?: string }
+) {
+  await requireAdmin();
+  await prisma.product.update({
+    where: { id: productId },
+    data,
+  });
+  revalidatePath(`/${slug}`);
+  revalidatePath(`/${slug}/admin`);
+}
+
+// ─── 5. কাস্টমার অর্ডার সাবমিট করা ─────────────────────────────────────────
 export async function placeOrderAction(payload: {
   tenantId: string;
   slug: string;
@@ -142,13 +170,10 @@ export async function placeOrderAction(payload: {
       deliveryCharge: payload.deliveryCharge,
       totalAmount,
       paymentMethod: payload.paymentMethod,
-      items: {
-        create: payload.items,
-      },
+      items: { create: payload.items },
     },
   });
 
-  // স্টক আপডেট করা
   for (const item of payload.items) {
     await prisma.product.update({
       where: { id: item.productId },
@@ -157,24 +182,26 @@ export async function placeOrderAction(payload: {
   }
 
   revalidatePath(`/${payload.slug}`);
+  revalidatePath(`/${payload.slug}/admin`);
   return { success: true, orderNumber: order.orderNumber };
 }
 
-// ৫. অর্ডারের স্ট্যাটাস পরিবর্তন করা (Admin)
+// ─── 6. অর্ডারের স্ট্যাটাস পরিবর্তন (Admin) ─────────────────────────────────
 export async function updateOrderStatusAction(orderId: string, status: string, slug: string) {
-  await prisma.order.update({
-    where: { id: orderId },
-    data: { status },
-  });
+  await requireAdmin();
+  await prisma.order.update({ where: { id: orderId }, data: { status } });
   revalidatePath(`/${slug}`);
+  revalidatePath(`/${slug}/admin`);
 }
 
-// ৬. স্টোরের WhatsApp ও ডেলিভারি সেটিংস আপডেট (Admin)
+// ─── 7. স্টোরের সেটিংস আপডেট (Admin) ────────────────────────────────────────
 export async function updateTenantSettingsAction(tenantId: string, slug: string, formData: FormData) {
+  await requireAdmin();
   await prisma.tenant.update({
     where: { id: tenantId },
     data: {
       name: String(formData.get("name")),
+      tagline: String(formData.get("tagline") || ""),
       whatsapp: String(formData.get("whatsapp")),
       deliveryLocal: Number(formData.get("deliveryLocal")),
       deliveryDhaka: Number(formData.get("deliveryDhaka")),
@@ -182,4 +209,35 @@ export async function updateTenantSettingsAction(tenantId: string, slug: string,
     },
   });
   revalidatePath(`/${slug}`);
+  revalidatePath(`/${slug}/admin`);
+}
+
+// ─── 8. অ্যাডমিন পাসওয়ার্ড ভেরিফিকেশন ────────────────────────────────────
+export async function verifyAdminPasswordAction(password: string): Promise<{ success: boolean; error?: string }> {
+  const correctPassword = process.env.ADMIN_PASSWORD || "admin123";
+  if (password === correctPassword) {
+    const cookieStore = await cookies();
+    cookieStore.set("khati_admin_session", "authenticated", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: "/",
+      sameSite: "lax",
+    });
+    return { success: true };
+  }
+  return { success: false, error: "ভুল পাসওয়ার্ড! অনুগ্রহ করে সঠিক পাসওয়ার্ড দিন।" };
+}
+
+// ─── 9. অ্যাডমিন লগআউট ───────────────────────────────────────────────────────
+export async function logoutAdminAction() {
+  const cookieStore = await cookies();
+  cookieStore.delete("khati_admin_session");
+  return { success: true };
+}
+
+// ─── 10. অ্যাডমিন অথেন্টিকেশন চেক ──────────────────────────────────────────
+export async function isAdminAuthenticated(): Promise<boolean> {
+  const cookieStore = await cookies();
+  return cookieStore.get("khati_admin_session")?.value === "authenticated";
 }
