@@ -736,8 +736,8 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
               </div>
 
               {/* Floating Mango Card */}
-              <div className="absolute -top-3 -left-3 sm:-left-6 bg-white/95 backdrop-blur-md p-2 rounded-2xl shadow-xl border border-stone-200/90 flex items-center gap-2.5 z-20 hover:scale-105 transition-transform">
-                <div className="w-11 h-11 rounded-xl overflow-hidden relative border border-amber-200 flex-shrink-0 bg-stone-100">
+              <div className="absolute -top-3 -left-2 sm:-left-6 bg-white/95 backdrop-blur-md p-1.5 sm:p-2 rounded-2xl shadow-xl border border-stone-200/90 flex items-center gap-2 sm:gap-2.5 z-20 hover:scale-105 transition-transform">
+                <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl overflow-hidden relative border border-amber-200 flex-shrink-0 bg-stone-100">
                   <Image
                     src="/products/mango.jpg"
                     alt="Mango"
@@ -747,14 +747,14 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
                     className="object-cover"
                   />
                 </div>
-                <div className="pr-2">
-                  <span className="text-[10px] text-stone-500 font-bold block">সিজনাল বাছাই</span>
-                  <span className="text-xs font-black text-emerald-950 block">মিষ্টি পাকা আম 🥭</span>
+                <div className="pr-1.5 sm:pr-2">
+                  <span className="text-[9px] sm:text-[10px] text-stone-500 font-bold block">সিজনাল বাছাই</span>
+                  <span className="text-[11px] sm:text-xs font-black text-emerald-950 block">মিষ্টি পাকা আম 🥭</span>
                 </div>
               </div>
 
-              {/* Floating Gur Card */}
-              <div className="absolute -bottom-3 -left-3 sm:-left-4 bg-white/95 backdrop-blur-md p-2 rounded-2xl shadow-xl border border-stone-200/90 flex items-center gap-2.5 z-20 hover:scale-105 transition-transform">
+              {/* Floating Gur Card (Hidden on mobile screens to prevent overlap with rating badge) */}
+              <div className="hidden sm:flex absolute -bottom-3 -left-4 bg-white/95 backdrop-blur-md p-2 rounded-2xl shadow-xl border border-stone-200/90 items-center gap-2.5 z-20 hover:scale-105 transition-transform">
                 <div className="w-11 h-11 rounded-xl overflow-hidden relative border border-amber-200 flex-shrink-0 bg-stone-100">
                   <Image
                     src="/products/gur.jpg"
@@ -772,16 +772,16 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
               </div>
 
               {/* Social Proof Badge */}
-              <div className="absolute -bottom-4 -right-2 sm:-right-4 bg-emerald-950/95 backdrop-blur-md text-white px-3.5 py-2.5 rounded-2xl shadow-2xl border border-emerald-700/70 z-20 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-amber-400 text-emerald-950 flex items-center justify-center font-black text-base shadow">
+              <div className="absolute -bottom-3 -right-2 sm:-right-4 bg-emerald-950/95 backdrop-blur-md text-white px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl shadow-2xl border border-emerald-700/70 z-20 flex items-center gap-2.5 sm:gap-3">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-amber-400 text-emerald-950 flex items-center justify-center font-black text-sm sm:text-base shadow flex-shrink-0">
                   ★
                 </div>
                 <div>
-                  <div className="flex items-center gap-1.5 text-amber-300 font-black text-xs">
+                  <div className="flex items-center gap-1.5 text-amber-300 font-black text-[11px] sm:text-xs">
                     <span>৪.৯ / ৫.০</span>
-                    <span className="text-stone-300 font-normal text-[11px]">(সন্তুষ্ট ক্রেতা)</span>
+                    <span className="text-stone-300 font-normal text-[10px] sm:text-[11px]">(সন্তুষ্ট ক্রেতা)</span>
                   </div>
-                  <p className="text-[10px] text-emerald-200 font-medium">১০০% প্রাকৃতিক গুণমান</p>
+                  <p className="text-[9px] sm:text-[10px] text-emerald-200 font-medium">১০০% প্রাকৃতিক গুণমান</p>
                 </div>
               </div>
             </div>
