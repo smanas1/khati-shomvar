@@ -7,17 +7,24 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://shomvar.smanas.net";
-  const title = "খাঁটি সম্ভার — খাঁটি মধু, রাজশাহীর আম ও খাঁটি গুড়ের বিশ্বস্ত প্রতিষ্ঠান";
+  const title = "খাঁটি সম্ভার — ১০০% খাঁটি প্রাকৃতিক মধু, রাজশাহীর আম ও খাঁটি গুড়ের বিশ্বস্ত প্রতিষ্ঠান";
   const description =
-    "১০০% খাঁটি প্রাকৃতিক মধু, রাজশাহীর মিষ্টি আম ও খাঁটি খেজুরের গুড় কিনুন সরাসরি মৌয়াল ও বাগান থেকে। সারাদেশে ক্যাশ অন ডেলিভারি। shomvar.smanas.net";
+    "গ্রাম-বাংলার প্রাকৃতিক মৌচাক ও সুন্দরবনের ১০০% খাঁটি প্রাকৃতিক মধু, রাজশাহীর মিষ্টি আম ও খাঁটি খেজুরের গুড় কিনুন সরাসরি মৌয়াল ও বাগান থেকে। সারাদেশে ক্যাশ অন ডেলিভারি। shomvar.smanas.net";
 
   return {
     title,
     description,
     keywords: [
       "খাঁটি মধু",
+      "প্রাকৃতিক মধু",
+      "raw honey bangladesh",
       "pure honey bangladesh",
+      "গ্রামের খাঁটি মধু",
       "সুন্দরবনের মধু",
+      "সরিষা ফুলের মধু",
+      "লিচু ফুলের মধু",
+      "কালোজিরা মধু",
+      "চাক ভাঙা মধু",
       "রাজশাহীর আম",
       "rajshahi mango online",
       "হিমসাগর আম",

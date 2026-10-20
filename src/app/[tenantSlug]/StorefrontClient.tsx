@@ -30,7 +30,21 @@ import {
   HelpCircle,
   Award,
   Check,
+  Calculator,
+  MapPin,
+  Scale,
+  ArrowRight,
 } from "lucide-react";
+import {
+  COURIER_SERVICES,
+  CourierId,
+  DeliveryAreaKey,
+  DELIVERY_AREAS,
+  estimateWeightKg,
+  calculateCourierCharge,
+  compareAllCouriers,
+  POPULAR_PRODUCT_PRESETS,
+} from "@/lib/courierPricing";
 
 interface TenantProduct {
   id: string;
@@ -186,12 +200,25 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
   const [isHydrated, setIsHydrated] = useState(false);
 
   // Checkout form states
+  const nameInputRef = React.useRef<HTMLInputElement>(null);
   const [custName, setCustName] = useState("");
   const [custPhone, setCustPhone] = useState("");
   const [custAddress, setCustAddress] = useState("");
   const [custNote, setCustNote] = useState("");
-  const [deliveryArea, setDeliveryArea] = useState<"LOCAL" | "DHAKA" | "OUTSIDE">("LOCAL");
+  const [deliveryArea, setDeliveryArea] = useState<DeliveryAreaKey>("DHAKA");
+  const [selectedCourier, setSelectedCourier] = useState<CourierId>("steadfast");
+  const [manualCourierOverride, setManualCourierOverride] = useState(false);
+  const [showCourierPicker, setShowCourierPicker] = useState(false);
+  const [showSpecialNote, setShowSpecialNote] = useState(false);
+  const [showPaymentPicker, setShowPaymentPicker] = useState(false);
+  const [savedInfoLoaded, setSavedInfoLoaded] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("COD");
+
+  // Courier Calculator Modal States
+  const [isCourierModalOpen, setIsCourierModalOpen] = useState(false);
+  const [modalArea, setModalArea] = useState<DeliveryAreaKey>("DHAKA");
+  const [modalWeight, setModalWeight] = useState<number>(1.4);
+  const [modalCustomWeight, setModalCustomWeight] = useState<string>("");
 
   // Toast Helper
   const addToast = (type: "success" | "error" | "warning" | "info", message: string) => {
@@ -206,7 +233,7 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // LocalStorage Cart & Wishlist Hydration (SSR safe)
+  // LocalStorage Cart, Wishlist & Saved Customer Hydration (SSR safe)
   useEffect(() => {
     try {
       const savedCart = localStorage.getItem(`khati_cart_${tenant.slug}`);
@@ -218,6 +245,15 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
       if (savedWishlist) {
         const parsed = JSON.parse(savedWishlist);
         if (typeof parsed === "object" && parsed !== null) setWishlist(parsed);
+      }
+      const savedCustomer = localStorage.getItem(`khati_customer_info`);
+      if (savedCustomer) {
+        const parsed = JSON.parse(savedCustomer);
+        if (parsed.name) setCustName(parsed.name);
+        if (parsed.phone) setCustPhone(parsed.phone);
+        if (parsed.address) setCustAddress(parsed.address);
+        if (parsed.deliveryArea) setDeliveryArea(parsed.deliveryArea);
+        if (parsed.name && parsed.phone) setSavedInfoLoaded(true);
       }
     } catch {
       // fallback
@@ -279,13 +315,32 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
     });
   }
 
-  const deliveryCharge =
-    deliveryArea === "LOCAL"
-      ? tenant.deliveryLocal
-      : deliveryArea === "DHAKA"
-      ? tenant.deliveryDhaka
-      : tenant.deliveryOutside;
+  // Weight calculation for cart items
+  const totalCartWeightKg = cart.reduce((sum, item) => {
+    return sum + estimateWeightKg(item.unit, item.name) * item.qty;
+  }, 0);
 
+  const effectiveCartWeightKg = totalCartWeightKg > 0 ? totalCartWeightKg : 1.0;
+
+  // Auto-select smartest courier if user hasn't manually overridden it
+  useEffect(() => {
+    if (manualCourierOverride || cart.length === 0) return;
+    const hasMango = cart.some((i) => i.category === "আম" || i.name.includes("আম"));
+    const isHeavy = totalCartWeightKg >= 3.5;
+    if (hasMango || isHeavy) {
+      setSelectedCourier("sundarban");
+    } else {
+      setSelectedCourier("steadfast");
+    }
+  }, [cart, totalCartWeightKg, manualCourierOverride]);
+
+  const currentCourierCalculation = calculateCourierCharge(
+    selectedCourier,
+    deliveryArea,
+    effectiveCartWeightKg
+  );
+
+  const deliveryCharge = cart.length > 0 ? currentCourierCalculation.charge : 0;
   const subTotal = cart.reduce((sum, i) => sum + i.price * i.qty, 0);
   const grandTotal = cart.length > 0 ? subTotal + deliveryCharge : 0;
   const totalCartCount = cart.reduce((s, i) => s + i.qty, 0);
@@ -379,6 +434,28 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
     }
   }
 
+  function handleDirectOrder(
+    product: TenantProduct,
+    variant?: ProductVariant,
+    qtyToAdd: number = 1
+  ) {
+    if (product.stock <= 0) {
+      addToast("error", `দুঃখিত, "${product.name}" বর্তমানে স্টক আউট!`);
+      return;
+    }
+    const allVariants = parseVariants(product);
+    const activeVar = variant || selectedVariants[product.id] || getDefaultVariant(product, allVariants);
+    addToCart(product, activeVar, qtyToAdd, true);
+    if (savedInfoLoaded && custName && custPhone) {
+      addToast("success", `"${product.name}" যোগ হয়েছে। আপনার ঠিকানা সংরক্ষিত আছে, সরাসরি অর্ডার নিশ্চিত করুন।`);
+    } else {
+      addToast("info", `"${product.name}" অর্ডারের জন্য প্রস্তুত। আপনার ডেলিভারি তথ্য দিন।`);
+      setTimeout(() => {
+        nameInputRef.current?.focus();
+      }, 250);
+    }
+  }
+
   function updateQty(cartKey: string, delta: number) {
     let warningMsg: string | null = null;
     setCart((prev) =>
@@ -461,9 +538,16 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
 
     setLoading(true);
     try {
-      const fullShippingAddress = custNote.trim()
-        ? `${custAddress.trim()}\n[নির্দেশনা: ${custNote.trim()}]`
-        : custAddress.trim();
+      const courierNote = `[কুরিয়ার: ${COURIER_SERVICES[selectedCourier].banglaName} (${COURIER_SERVICES[selectedCourier].shortDeliveryType}) | ওজন: ~${effectiveCartWeightKg.toFixed(1)} কেজি | চার্জ: ৳${deliveryCharge}]`;
+      const fullShippingAddress = [
+        custAddress.trim(),
+        courierNote,
+        custNote.trim() ? `[নির্দেশনা: ${custNote.trim()}]` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const deliveryAreaLabel = `${DELIVERY_AREAS[deliveryArea].name} - ${COURIER_SERVICES[selectedCourier].banglaName}`;
 
       const res = await placeOrderAction({
         tenantId: tenant.id,
@@ -471,7 +555,7 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
         customerName: custName.trim(),
         customerPhone: cleanPhone,
         shippingAddress: fullShippingAddress,
-        deliveryArea,
+        deliveryArea: deliveryAreaLabel,
         deliveryCharge,
         paymentMethod,
         items: cart.map((c) => ({
@@ -489,9 +573,22 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
         `আলহামদুলিল্লাহ! আপনার অর্ডার (${res.orderNumber}) সফলভাবে গৃহীত হয়েছে। খুব শীঘ্রই আমাদের প্রতিনিধি আপনার নম্বরে যোগাযোগ করবেন।`
       );
       addToast("success", `অর্ডার সফল! অর্ডার নম্বর: ${res.orderNumber}`);
-      setCustName("");
-      setCustPhone("");
-      setCustAddress("");
+
+      // Persist customer information so future orders are 1-click
+      try {
+        localStorage.setItem(
+          `khati_customer_info`,
+          JSON.stringify({
+            name: custName.trim(),
+            phone: cleanPhone,
+            address: custAddress.trim(),
+            deliveryArea,
+          })
+        );
+        setSavedInfoLoaded(true);
+      } catch {
+        // ignore
+      }
       setCustNote("");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "অর্ডার প্রক্রিয়াকরণে সমস্যা হয়েছে";
@@ -515,8 +612,9 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
       .map((i) => `• ${i.name} (${i.unit}) x ${i.qty} = ৳${i.price * i.qty}`)
       .join("%0A");
 
+    const courierInfo = `${COURIER_SERVICES[selectedCourier].banglaName} (${COURIER_SERVICES[selectedCourier].shortDeliveryType})`;
     const notePart = custNote.trim() ? `%0A*বিশেষ নির্দেশনা:* ${encodeURIComponent(custNote.trim())}` : "";
-    const msg = `আসসালামু আলাইকুম *${tenant.name}*,%0Aআমি নিচের পণ্যগুলো অর্ডার করতে চাই:%0A${lines}%0A*ডেলিভারি চার্জ:* ৳${deliveryCharge}%0A*সর্বমোট বিল:* ৳${grandTotal}%0A%0A*নাম:* ${encodeURIComponent(custName.trim() || "উল্লেখ করা হয়নি")}%0A*মোবাইল:* ${encodeURIComponent(custPhone.trim() || "উল্লেখ করা হয়নি")}%0A*ঠিকানা:* ${encodeURIComponent(custAddress.trim() || "উল্লেখ করা হয়নি")}${notePart}`;
+    const msg = `আসসালামু আলাইকুম *${tenant.name}*,%0Aআমি নাটোর থেকে নিচের পণ্যগুলো অর্ডার করতে চাই:%0A${lines}%0A%0A*গন্তব্য:* ${encodeURIComponent(DELIVERY_AREAS[deliveryArea].name)}%0A*নির্বাচিত কুরিয়ার:* ${encodeURIComponent(courierInfo)}%0A*পার্সেলের আনুমানিক ওজন:* ${effectiveCartWeightKg.toFixed(1)} কেজি%0A*ডেলিভারি চার্জ:* ৳${deliveryCharge}%0A*সর্বমোট বিল:* ৳${grandTotal}%0A%0A*নাম:* ${encodeURIComponent(custName.trim() || "উল্লেখ করা হয়নি")}%0A*মোবাইল:* ${encodeURIComponent(custPhone.trim() || "উল্লেখ করা হয়নি")}%0A*ঠিকানা:* ${encodeURIComponent(custAddress.trim() || "উল্লেখ করা হয়নি")}${notePart}`;
 
     window.open(`https://wa.me/${tenant.whatsapp}?text=${msg}`, "_blank");
   }
@@ -570,10 +668,18 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
             </span>
           </div>
 
-          <div className="flex items-center gap-4 text-xs font-semibold text-emerald-200">
-            <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-3 sm:gap-4 text-xs font-semibold text-emerald-200">
+            <button
+              type="button"
+              onClick={() => setIsCourierModalOpen(true)}
+              className="flex items-center gap-1.5 bg-emerald-900/90 hover:bg-emerald-800 text-amber-300 px-2.5 py-1 rounded-full border border-emerald-700/80 transition cursor-pointer"
+            >
+              <Calculator className="w-3.5 h-3.5 text-amber-400" />
+              <span>নাটোর কুরিয়ার ক্যালকুলেটর</span>
+            </button>
+            <div className="hidden md:flex items-center gap-1.5">
               <Truck className="w-3.5 h-3.5 text-amber-400" />
-              <span>সারাদেশে হোম ডেলিভারি</span>
+              <span>সারাদেশে ডেলিভারি</span>
             </div>
             <div className="flex items-center gap-1.5">
               <Phone className="w-3.5 h-3.5 text-amber-400" />
@@ -606,7 +712,18 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={() => setIsCourierModalOpen(true)}
+              className="inline-flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs hover:scale-[1.02] cursor-pointer"
+            >
+              <Calculator className="w-3.5 h-3.5 text-amber-700" />
+              <span className="hidden sm:inline">নাটোর ডেলিভারি চার্জ</span>
+              <span className="sm:hidden">চার্জ জানুন</span>
+              <span className="bg-amber-400 text-emerald-950 text-[10px] px-1.5 py-0.2 rounded-full font-black">৪ কুরিয়ার</span>
+            </button>
+
             <a
               href={`https://wa.me/${tenant.whatsapp}`}
               target="_blank"
@@ -614,12 +731,12 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
               className="hidden sm:inline-flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm hover:scale-[1.02]"
             >
               <MessageCircle className="w-4 h-4 text-emerald-600 fill-emerald-600" />
-              <span>WhatsApp মেসেজ</span>
+              <span>WhatsApp</span>
             </a>
 
             <button
               onClick={() => setIsCartOpen(true)}
-              className="relative inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-emerald-950 font-black px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm shadow-md transition-all border border-amber-600/30"
+              className="relative inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-emerald-950 font-black px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm shadow-md transition-all border border-amber-600/30 cursor-pointer"
             >
               <ShoppingCart className="w-4 h-4 text-emerald-950" />
               <span>কার্ট</span>
@@ -671,7 +788,7 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
               </h2>
 
               <p className="text-emerald-100/90 text-sm sm:text-base mt-4 leading-relaxed max-w-xl font-normal">
-                সরাসরি মৌয়াল ও রাজশাহীর নিজস্ব বাগান থেকে সংগৃহীত ১০০% নির্ভেজাল খাদ্যোপাদান। কোনো প্রকার কেমিক্যাল বা প্রিজারভেটিভ ছাড়া খাঁটি স্বাদের সর্বোচ্চ নিশ্চয়তা।
+                গ্রাম-বাংলার প্রাকৃতিক মৌচাক, বিশ্বস্ত মৌয়াল ও রাজশাহীর নিজস্ব বাগান থেকে সংগৃহীত ১০০% নির্ভেজাল খাদ্যোপাদান। কোনো প্রকার কেমিক্যাল বা প্রিজারভেটিভ ছাড়া খাঁটি স্বাদের সর্বোচ্চ নিশ্চয়তা।
               </p>
 
               {/* Action CTAs */}
@@ -784,6 +901,76 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
                   <p className="text-[9px] sm:text-[10px] text-emerald-200 font-medium">১০০% প্রাকৃতিক গুণমান</p>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ==================== NATORE COURIER PRICING & COMPARISON QUICK BANNER ==================== */}
+        <div className="bg-gradient-to-br from-emerald-950 via-[#063828] to-stone-900 text-white rounded-3xl p-4 sm:p-6 mb-8 border border-emerald-800/60 shadow-xl relative overflow-hidden">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div className="space-y-1.5 max-w-2xl">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="bg-amber-400 text-emerald-950 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-xs">
+                  নাটোর হাব থেকে সারা দেশে ডেলিভারি
+                </span>
+                <span className="text-emerald-200 text-xs flex items-center gap-1 font-medium">
+                  <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                  উৎস: নাটোর (রাজশাহী বিভাগ)
+                </span>
+              </div>
+              <h3 className="text-base sm:text-xl font-black text-white">
+                📦 কোন কুরিয়ারে কত ডেলিভারি চার্জ? ৪টি কুরিয়ারের সহজ তুলনা
+              </h3>
+              <p className="text-xs sm:text-sm text-emerald-100/80 leading-relaxed font-normal">
+                পণ্যের সাইজ ও ওজন অনুযায়ী সবচেয়ে সাশ্রয়ী কুরিয়ার বেছে নিন। মধুর জন্য <span className="text-amber-300 font-bold">স্টেডফাস্ট ও পাঠাও</span> হোম ডেলিভারি, এবং আম ও ভারী পার্সেলের জন্য <span className="text-amber-300 font-bold">সুন্দরবন ও এস এ পরিবহন</span> কাউন্টারে খরচ অর্ধেকেরও কম!
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+              <button
+                type="button"
+                onClick={() => setIsCourierModalOpen(true)}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-amber-400 hover:bg-amber-500 active:scale-95 text-emerald-950 font-black px-5 py-3 rounded-2xl text-xs sm:text-sm shadow-lg shadow-amber-950/30 transition-all hover:scale-[1.02] cursor-pointer"
+              >
+                <Calculator className="w-4 h-4 text-emerald-950" />
+                <span>ডেলিভারি ক্যালকুলেটর খুলুন</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Courier Rates Summary Badges */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-4 pt-4 border-t border-emerald-800/50 text-[11px]">
+            <div className="bg-emerald-900/60 p-2.5 rounded-2xl border border-emerald-700/50">
+              <div className="font-bold text-emerald-200 flex items-center gap-1">
+                <span>🚚 স্টেডফাস্ট কুরিয়ার</span>
+              </div>
+              <span className="text-[10px] text-emerald-300 block font-medium">হোম ডেলিভারি (২-৩ দিন)</span>
+              <p className="text-stone-300 text-[10px] mt-1">মধু/গুড় ১ কেজি: ৳১১০ (ঢাকা) / ৳১৩০ (অন্য জেলা)</p>
+            </div>
+
+            <div className="bg-emerald-900/60 p-2.5 rounded-2xl border border-emerald-700/50">
+              <div className="font-bold text-rose-300 flex items-center gap-1">
+                <span>🔴 পাঠাও কুরিয়ার</span>
+              </div>
+              <span className="text-[10px] text-rose-200 block font-medium">স্মার্ট হোম ডেলিভারি</span>
+              <p className="text-stone-300 text-[10px] mt-1">ছোট পার্সেল (০.৫-১ কেজি): ৳১১০-৳১৩০ (ঢাকা)</p>
+            </div>
+
+            <div className="bg-emerald-900/60 p-2.5 rounded-2xl border border-amber-500/40 relative">
+              <div className="font-bold text-amber-300 flex items-center gap-1">
+                <span>📦 সুন্দরবন কুরিয়ার</span>
+              </div>
+              <span className="text-[10px] text-amber-200 block font-medium">শাখা/কাউন্টার ডেলিভারি</span>
+              <p className="text-amber-100 text-[10px] mt-1 font-semibold">আম ১০ কেজি: মাত্র ৳১৫০ | ২০ কেজি: মাত্র ৳২৭০!</p>
+            </div>
+
+            <div className="bg-emerald-900/60 p-2.5 rounded-2xl border border-sky-500/40">
+              <div className="font-bold text-sky-300 flex items-center gap-1">
+                <span>⚡ এস এ পরিবহন</span>
+              </div>
+              <span className="text-[10px] text-sky-200 block font-medium">দ্রুততম শাখা ডেলিভারি</span>
+              <p className="text-stone-300 text-[10px] mt-1">২৪ ঘণ্টায় শাখা ডেলিভারি: ৫-১০ কেজি ৳১৫০-৳২০০</p>
             </div>
           </div>
         </div>
@@ -1071,8 +1258,9 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
                       )}
                     </div>
 
-                    {/* Action Buttons */}
+                    {/* Action Buttons: WhatsApp (icon), Cart (compact icon/button), Direct Order (large primary) */}
                     <div className="flex items-center gap-2">
+                      {/* WhatsApp Order Button */}
                       <a
                         href={
                           isOutOfStock
@@ -1084,30 +1272,54 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
                         target={isOutOfStock ? "_self" : "_blank"}
                         rel="noreferrer"
                         title={isOutOfStock ? "পণ্যটি স্টকে নেই" : "WhatsApp-এ অর্ডার"}
+                        aria-label="WhatsApp-এ অর্ডার"
                         onClick={(e) => {
                           if (isOutOfStock) {
                             e.preventDefault();
                             addToast("error", `দুঃখিত, "${p.name}" বর্তমানে স্টক শেষ!`);
                           }
                         }}
-                        className={`px-3.5 py-2.5 rounded-xl border transition flex items-center justify-center shadow-sm active:scale-95 ${
+                        className={`p-3 rounded-xl border transition flex items-center justify-center shadow-sm active:scale-95 ${
                           isOutOfStock
                             ? "border-stone-200 bg-stone-100 text-stone-400 cursor-not-allowed"
-                            : "border-emerald-300 hover:bg-emerald-50 text-emerald-700"
+                            : "border-stone-200 hover:bg-stone-100 text-emerald-700 bg-white"
                         }`}
                       >
-                        <MessageCircle className="w-4 h-4 text-emerald-600" />
+                        <MessageCircle className="w-5 h-5 text-emerald-600" />
                       </a>
 
+                      {/* Compact Add to Cart Button */}
                       <button
-                        onClick={() => addToCart(p, activeVariant, cardQty)}
+                        type="button"
+                        onClick={() => addToCart(p, activeVariant, cardQty, false)}
                         disabled={isOutOfStock}
-                        className={`flex-1 py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition-all active:scale-98 ${
+                        title={isOutOfStock ? "স্টক শেষ" : "কার্টে যোগ করুন"}
+                        aria-label="কার্টে যোগ করুন"
+                        className={`p-3 rounded-xl border font-bold transition flex items-center justify-center shadow-sm active:scale-95 ${
+                          isOutOfStock
+                            ? "border-stone-200 bg-stone-100 text-stone-400 cursor-not-allowed"
+                            : addedItemKey === `${p.id}_${activeVariant.unit}`
+                            ? "border-amber-400 bg-amber-100 text-emerald-950 scale-105"
+                            : "border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800"
+                        }`}
+                      >
+                        {addedItemKey === `${p.id}_${activeVariant.unit}` ? (
+                          <Check className="w-5 h-5 text-emerald-800" />
+                        ) : (
+                          <ShoppingCart className="w-5 h-5 text-emerald-800" />
+                        )}
+                      </button>
+
+                      {/* Large Primary "Order Now" Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleDirectOrder(p, activeVariant, cardQty)}
+                        disabled={isOutOfStock}
+                        aria-label="অর্ডার করুন"
+                        className={`flex-1 py-3 px-4 rounded-xl font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 ${
                           isOutOfStock
                             ? "bg-stone-200 text-stone-500 cursor-not-allowed"
-                            : addedItemKey === `${p.id}_${activeVariant.unit}`
-                            ? "bg-amber-500 text-emerald-950 scale-[1.02]"
-                            : "bg-emerald-800 hover:bg-emerald-900 text-white"
+                            : "bg-emerald-800 hover:bg-emerald-900 text-white shadow-emerald-950/20 hover:shadow-lg hover:scale-[1.01]"
                         }`}
                       >
                         {isOutOfStock ? (
@@ -1115,15 +1327,10 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
                             <AlertCircle className="w-4 h-4 text-stone-400" />
                             <span>স্টক শেষ</span>
                           </>
-                        ) : addedItemKey === `${p.id}_${activeVariant.unit}` ? (
-                          <>
-                            <CheckCircle2 className="w-4 h-4 text-emerald-950" />
-                            <span>যোগ হয়েছে!</span>
-                          </>
                         ) : (
                           <>
-                            <ShoppingCart className="w-4 h-4" />
-                            <span>কার্টে যোগ করুন</span>
+                            <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" />
+                            <span>অর্ডার করুন (১ ক্লিকে)</span>
                           </>
                         )}
                       </button>
@@ -1172,8 +1379,12 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
                 name: "Bangladesh",
               },
               knowsAbout: [
-                "খাঁটি মধু (Pure Honey)",
+                "১০০% খাঁটি প্রাকৃতিক মধু (Pure Natural Honey)",
+                "গ্রাম-বাংলার প্রাকৃতিক মৌচাক",
                 "সুন্দরবনের মধু",
+                "সরিষা ফুলের মধু",
+                "লিচু ফুলের মধু",
+                "কালোজিরা মধু",
                 "রাজশাহীর মিষ্টি আম (Rajshahi Mango)",
                 "হিমসাগর আম",
                 "ল্যাংড়া আম",
@@ -1252,7 +1463,7 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
                   name: "খাঁটি মধু (Pure Honey) কীভাবে চিনবেন এবং কেন খাঁটি সম্ভার (shomvar.smanas.net)-এর মধু সেরা?",
                   acceptedAnswer: {
                     "@type": "Answer",
-                    text: "খাঁটি মধু পানিতে দিলে সহজে দ্রবীভূত না হয়ে সরাসরি তলানিতে জমাট বাঁধে। খাঁটি সম্ভার (shomvar.smanas.net) সরাসরি সুন্দরবনের মৌয়ালদের চাক ও নিজস্ব বাগানের ফুল থেকে শতভাগ কাঁচা, অপরিশোধিত ও চিনি ছাড়া প্রাকৃতিক মধু ল্যাব-পরীক্ষিত নিশ্চয়তাসহ ক্যাশ অন ডেলিভারিতে সরবরাহ করে।",
+                    text: "খাঁটি মধু পানিতে দিলে সহজে দ্রবীভূত না হয়ে নিচে গিয়ে জমাট বাঁধে। খাঁটি সম্ভার (shomvar.smanas.net) গ্রাম-বাংলার প্রাকৃতিক মৌচাক, নির্ভরযোগ্য মৌয়াল ও সুন্দরবনের সেরা খাঁটি চাক থেকে শতভাগ কাঁচা, অপরিশোধিত ও চিনি ছাড়া প্রাকৃতিক মধু ল্যাব-পরীক্ষিত নিশ্চয়তাসহ ক্যাশ অন ডেলিভারিতে সরবরাহ করে।",
                   },
                 },
                 {
@@ -1315,10 +1526,10 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
                 🍯
               </div>
               <h3 className="font-extrabold text-base text-stone-900 mb-2">
-                সুন্দরবনের খাঁটি মধু (Pure Honey)
+                ১০০% খাঁটি প্রাকৃতিক মধু (Pure Natural Honey)
               </h3>
               <p className="text-xs text-stone-600 leading-relaxed">
-                কোনো প্রকার প্রসেসিং বা কৃত্রিম চিনি ছাড়া সম্পূর্ণ কাঁচা (Raw) প্রাকৃতিক মধু। সুন্দরবনের খলিশা, গরান ও সরিষা ফুলের নির্ভেজাল মধু যা রোগ প্রতিরোধ ক্ষমতা বাড়াতে সাহায্য করে।
+                গ্রাম-বাংলার প্রাকৃতিক মৌচাক, নির্ভরযোগ্য মৌয়াল ও সুন্দরবনের সেরা প্রাকৃতিক মধু (সরিষা, খলিশা, লিচু ও কালোজিরা ফুল)। কোনো প্রকার হিটিং প্রসেসিং বা কৃত্রিম চিনি ছাড়া সম্পূর্ণ কাঁচা (Raw) ও পুষ্টিকর মধু যা রোগ প্রতিরোধ ক্ষমতা বাড়ায়।
               </p>
             </div>
 
@@ -1357,8 +1568,8 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
             <div className="space-y-3 max-w-3xl mx-auto">
               {[
                 {
-                  q: "খাঁটি মধু চেনার উপায় কি এবং খাঁটি সম্ভার-এর মধু কেন নির্ভরযোগ্য?",
-                  a: "খাঁটি মধু পানিতে দিলে সঙ্গে সঙ্গে গলে যায় না, বরং সুতার মতো নিচে গিয়ে জমাট বাঁধে। খাঁটি সম্ভার (shomvar.smanas.net) সরাসরি সুন্দরবনের রেজিস্টার্ড মৌয়াল ও নিজস্ব বাগান থেকে শতভাগ প্রাকৃতিক মধু সংগ্রহ করে, যাতে কোনো ধরনের কৃত্রিম মিষ্টি বা প্রিজারভেটিভ থাকে না।",
+                  q: "খাঁটি মধু চেনার উপায় কি এবং খাঁটি সম্ভার-এর মধু কোথা থেকে সংগ্রহ করা হয়?",
+                  a: "খাঁটি মধু পানিতে দিলে সঙ্গে সঙ্গে গলে যায় না, বরং সুতার মতো নিচে গিয়ে জমাট বাঁধে। খাঁটি সম্ভার (shomvar.smanas.net) শুধু সুন্দরবন নয়, সুন্দরবনের পাশাপাশি গ্রাম-বাংলার বিভিন্ন অঞ্চলের বিশ্বস্ত মৌয়াল ও প্রাকৃতিক মৌচাক থেকে শতভাগ কাঁচা ও অপরিশোধিত মধু সংগ্রহ করে, যাতে কোনো ধরনের কৃত্রিম মিষ্টি, হিটিং বা প্রিজারভেটিভ থাকে না।",
                 },
                 {
                   q: "রাজশাহীর আম কীভাবে অক্ষত ও ফরমালিনমুক্ত ডেলিভারি করা হয়?",
@@ -1423,8 +1634,8 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
               {/* Cart Drawer Header */}
               <div className="flex justify-between items-center border-b border-stone-100 pb-4">
                 <div className="flex items-center gap-2">
-                  <ShoppingCart className="w-5 h-5 text-emerald-800" />
-                  <h3 className="font-extrabold text-xl text-stone-900">আপনার শপিং কার্ট</h3>
+                  <ShoppingBag className="w-5 h-5 text-emerald-800" />
+                  <h3 className="font-extrabold text-xl text-stone-900">অর্ডার ও চেকআউট</h3>
                 </div>
                 <button
                   onClick={() => setIsCartOpen(false)}
@@ -1531,114 +1742,324 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
 
             {/* Checkout Form */}
             {cart.length > 0 && (
-              <form onSubmit={handleCheckout} className="space-y-3 border-t border-stone-200 pt-3 text-sm">
+              <form onSubmit={handleCheckout} className="space-y-3.5 border-t border-stone-200 pt-4 text-sm">
+                {/* Saved Info Banner (If Returning Customer) */}
+                {savedInfoLoaded && (
+                  <div className="bg-emerald-50 border border-emerald-300/80 rounded-2xl p-3 flex items-center justify-between gap-2 shadow-xs animate-fadeIn">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
+                        <Check className="w-3.5 h-3.5 font-black" />
+                      </div>
+                      <div>
+                        <span className="text-xs font-black text-emerald-950 block">আপনার পূর্ববর্তী তথ্য লোড হয়েছে</span>
+                        <span className="text-[10px] text-emerald-800">সরাসরি অর্ডার কনফার্ম করতে পারবেন</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustName("");
+                        setCustPhone("");
+                        setCustAddress("");
+                        setSavedInfoLoaded(false);
+                        try { localStorage.removeItem("khati_customer_info"); } catch {}
+                      }}
+                      className="text-[11px] font-bold text-stone-500 hover:text-rose-600 underline whitespace-nowrap cursor-pointer"
+                    >
+                      নতুন তথ্য দিন
+                    </button>
+                  </div>
+                )}
+
+                {/* 1. Customer Name */}
                 <div>
+                  <label className="text-xs font-bold text-stone-800 mb-1 block">
+                    আপনার পুরো নাম <span className="text-rose-500">*</span>
+                  </label>
                   <input
+                    ref={nameInputRef}
                     required
-                    placeholder="আপনার পুরো নাম *"
+                    autoComplete="name"
+                    placeholder="যেমন: মোঃ আব্দুল্লাহ"
                     value={custName}
                     onChange={(e) => setCustName(e.target.value)}
-                    className="w-full border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    className="w-full border border-stone-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm focus:ring-2 focus:ring-emerald-700 focus:bg-white focus:outline-none transition shadow-xs"
                   />
                 </div>
 
+                {/* 2. Customer Phone */}
                 <div>
+                  <label className="text-xs font-bold text-stone-800 mb-1 block">
+                    মোবাইল নম্বর <span className="text-rose-500">*</span>
+                  </label>
                   <input
                     required
                     type="tel"
                     inputMode="numeric"
+                    autoComplete="tel"
                     pattern="01[3-9][0-9]{8}"
                     maxLength={11}
-                    placeholder="মোবাইল নম্বর (০১৭XXXXXXXX) *"
+                    placeholder="১১ ডিজিট (যেমন: 017XXXXXXXX)"
                     value={custPhone}
-                    onChange={(e) => setCustPhone(e.target.value)}
-                    className="w-full border border-stone-200 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, "");
+                      if (val.length <= 11) setCustPhone(val);
+                    }}
+                    className="w-full border border-stone-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm focus:ring-2 focus:ring-emerald-700 focus:bg-white focus:outline-none transition shadow-xs"
                   />
                   <span className="text-[10px] text-stone-400 pl-1 mt-0.5 block">
-                    সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন
+                    সঠিক ১১ ডিজিটের সচল মোবাইল নম্বর দিন (অর্ডার কনফার্মেশনের জন্য)
                   </span>
                 </div>
 
+                {/* 3. Delivery Address */}
                 <div>
+                  <label className="text-xs font-bold text-stone-800 mb-1 block">
+                    সম্পূর্ণ ডেলিভারি ঠিকানা (জেলা ও থানা সহ) <span className="text-rose-500">*</span>
+                  </label>
                   <textarea
                     required
                     rows={2}
-                    placeholder="সম্পূর্ণ ডেলিভারি ঠিকানা (বাসা/রোড/এলাকা/উপজেলা) *"
+                    autoComplete="street-address"
+                    placeholder="যেমন: হাউজ ১২, রোড ৪, সেক্টর ৭, উত্তরা, ঢাকা (অথবা গ্রাম, ডাকঘর, থানা ও জেলা)"
                     value={custAddress}
                     onChange={(e) => setCustAddress(e.target.value)}
-                    className="w-full border border-stone-200 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    className="w-full border border-stone-300 rounded-xl px-3.5 py-2 text-xs sm:text-sm focus:ring-2 focus:ring-emerald-700 focus:bg-white focus:outline-none transition shadow-xs"
                   />
                 </div>
 
+                {/* Optional Note Toggle */}
                 <div>
-                  <input
-                    placeholder="অতিরিক্ত নির্দেশনা বা বিকল্প ফোন নম্বর (ঐচ্ছিক)"
-                    value={custNote}
-                    onChange={(e) => setCustNote(e.target.value)}
-                    className="w-full border border-stone-200 rounded-xl px-3.5 py-2 text-xs focus:ring-2 focus:ring-emerald-700 focus:outline-none bg-stone-50"
-                  />
+                  {!showSpecialNote && !custNote ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowSpecialNote(true)}
+                      className="text-[11px] text-emerald-800 hover:text-emerald-950 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>+ বিশেষ কোনো নির্দেশনা বা বিকল্প নম্বর আছে?</span>
+                    </button>
+                  ) : (
+                    <div className="animate-fadeIn">
+                      <input
+                        placeholder="বিকল্প ফোন নম্বর বা ডেলিভারির বিশেষ নির্দেশনা (ঐচ্ছিক)"
+                        value={custNote}
+                        onChange={(e) => setCustNote(e.target.value)}
+                        className="w-full border border-stone-200 rounded-xl px-3.5 py-2 text-xs focus:ring-2 focus:ring-emerald-700 focus:outline-none bg-stone-50"
+                      />
+                    </div>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[11px] font-bold text-stone-500 mb-1 block">ডেলিভারি এরিয়া</label>
-                    <select
-                      value={deliveryArea}
-                      onChange={(e) => setDeliveryArea(e.target.value as "LOCAL" | "DHAKA" | "OUTSIDE")}
-                      className="w-full border border-stone-200 rounded-xl px-2.5 py-2 text-xs bg-white focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-                    >
-                      <option value="LOCAL">রাজশাহী সিটি (৳{tenant.deliveryLocal})</option>
-                      <option value="DHAKA">ঢাকা সিটি (৳{tenant.deliveryDhaka})</option>
-                      <option value="OUTSIDE">সারা বাংলাদেশ (৳{tenant.deliveryOutside})</option>
-                    </select>
+                {/* Destination Area with Live Delivery Charges on Buttons */}
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="text-xs font-bold text-stone-800 block">
+                      ডেলিভারি গন্তব্য এলাকা
+                    </label>
+                    <span className="text-[10px] text-emerald-800 font-semibold flex items-center gap-1">
+                      <MapPin className="w-3 h-3 text-amber-500" />
+                      নাটোর হাব থেকে প্রেরিত
+                    </span>
                   </div>
-
-                  <div>
-                    <label className="text-[11px] font-bold text-stone-500 mb-1 block">পেমেন্ট মেথড</label>
-                    <select
-                      value={paymentMethod}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
-                      className="w-full border border-stone-200 rounded-xl px-2.5 py-2 text-xs bg-white focus:ring-2 focus:ring-emerald-700 focus:outline-none"
-                    >
-                      <option value="COD">ক্যাশ অন ডেলিভারি</option>
-                      <option value="bKash">বিকাশ (bKash)</option>
-                      <option value="Nagad">নগদ (Nagad)</option>
-                    </select>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { key: "DHAKA" as DeliveryAreaKey, label: "ঢাকা সিটি", icon: "🏢" },
+                      { key: "OUTSIDE" as DeliveryAreaKey, label: "ঢাকার বাইরে", icon: "🗺️" },
+                      { key: "LOCAL" as DeliveryAreaKey, label: "নাটোর লোকাল", icon: "📍" },
+                    ].map((area) => {
+                      const isSel = deliveryArea === area.key;
+                      const charge = calculateCourierCharge(selectedCourier, area.key, effectiveCartWeightKg).charge;
+                      return (
+                        <button
+                          key={area.key}
+                          type="button"
+                          onClick={() => setDeliveryArea(area.key)}
+                          className={`p-2 rounded-xl border text-center transition-all cursor-pointer ${
+                            isSel
+                              ? "border-emerald-700 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-600/30 font-bold shadow-xs"
+                              : "border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700"
+                          }`}
+                        >
+                          <span className="block text-[11px] leading-tight">{area.icon} {area.label}</span>
+                          <span className={`block text-xs font-black mt-0.5 ${isSel ? "text-emerald-900" : "text-stone-600 font-medium"}`}>
+                            ৳{charge}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
+
+                {/* Smart Pre-selected Courier Card with Quick Expand Toggle */}
+                <div className="bg-stone-50 p-3 rounded-2xl border border-stone-200 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">🚚</span>
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-black text-stone-900">
+                            {COURIER_SERVICES[selectedCourier].banglaName}
+                          </span>
+                          <span
+                            className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                              COURIER_SERVICES[selectedCourier].shortDeliveryType === "হোম ডেলিভারি"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-amber-100 text-amber-900"
+                            }`}
+                          >
+                            {COURIER_SERVICES[selectedCourier].shortDeliveryType}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-stone-500 mt-0.5 leading-tight">
+                          {currentCourierCalculation.explanation}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowCourierPicker(!showCourierPicker)}
+                      className="text-[11px] font-bold text-emerald-800 bg-white hover:bg-emerald-50 border border-emerald-300 px-2.5 py-1 rounded-xl transition cursor-pointer whitespace-nowrap shadow-xs"
+                    >
+                      {showCourierPicker ? "লুকান ▴" : "পরিবর্তন ▾"}
+                    </button>
+                  </div>
+
+                  {/* Collapsible Courier Selector if Customer wants a specific courier */}
+                  {showCourierPicker && (
+                    <div className="pt-2 border-t border-stone-200/80 space-y-2 animate-fadeIn">
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span className="font-bold text-stone-700">অন্যান্য কুরিয়ার সার্ভিস:</span>
+                        <button
+                          type="button"
+                          onClick={() => setIsCourierModalOpen(true)}
+                          className="text-emerald-700 hover:underline font-bold text-[10px] flex items-center gap-1"
+                        >
+                          <Calculator className="w-3 h-3" />
+                          <span>তুলনা দেখুন</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {(["steadfast", "pathao", "sundarban", "sa_paribahan"] as CourierId[]).map((cid) => {
+                          const srv = COURIER_SERVICES[cid];
+                          const calc = calculateCourierCharge(cid, deliveryArea, effectiveCartWeightKg);
+                          const isSel = selectedCourier === cid;
+                          return (
+                            <button
+                              key={cid}
+                              type="button"
+                              onClick={() => {
+                                setSelectedCourier(cid);
+                                setManualCourierOverride(true);
+                              }}
+                              className={`p-2 rounded-xl border text-left transition cursor-pointer ${
+                                isSel
+                                  ? "border-emerald-700 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-600/30 font-bold"
+                                  : "border-stone-200 bg-white hover:bg-stone-50 text-stone-700"
+                              }`}
+                            >
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="truncate">{srv.banglaName}</span>
+                                <span className="font-mono font-bold">৳{calc.charge}</span>
+                              </div>
+                              <span className="text-[10px] text-stone-400 block">{srv.shortDeliveryType} • {srv.duration}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Payment Method (COD Pre-selected) */}
+                <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-2.5 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">💵</span>
+                    <div>
+                      <span className="font-bold text-amber-950 block">ক্যাশ অন ডেলিভারি (COD)</span>
+                      <span className="text-[10px] text-stone-500">পণ্য হাতে পেয়ে চেক করে সম্পূর্ণ মূল্য পরিশোধ করুন</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPaymentPicker(!showPaymentPicker)}
+                    className="text-[11px] font-bold text-stone-600 hover:text-emerald-800 underline cursor-pointer whitespace-nowrap"
+                  >
+                    {showPaymentPicker ? "লুকান" : "বিকাশ/নগদ?"}
+                  </button>
+                </div>
+
+                {showPaymentPicker && (
+                  <div className="grid grid-cols-3 gap-2 pt-1 animate-fadeIn">
+                    {[
+                      { key: "COD", label: "ক্যাশ অন ডেলিভারি" },
+                      { key: "bKash", label: "বিকাশ" },
+                      { key: "Nagad", label: "নগদ" },
+                    ].map((pm) => {
+                      const isSel = paymentMethod === pm.key;
+                      return (
+                        <button
+                          key={pm.key}
+                          type="button"
+                          onClick={() => setPaymentMethod(pm.key)}
+                          className={`p-2 rounded-xl border text-center transition-all cursor-pointer ${
+                            isSel
+                              ? "border-emerald-700 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-600/30 font-bold"
+                              : "border-stone-200 bg-white hover:bg-stone-50 text-stone-600"
+                          }`}
+                        >
+                          <span className="block text-[11px] leading-tight">{pm.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Bill Breakdown */}
-                <div className="bg-amber-50/80 p-3 rounded-2xl border border-amber-200/80 space-y-1.5 text-xs">
+                <div className="bg-amber-50/90 p-3 rounded-2xl border border-amber-200/90 space-y-1.5 text-xs">
                   <div className="flex justify-between text-stone-600">
                     <span>পণ্যের মোট মূল্য:</span>
                     <span>৳{subTotal}</span>
                   </div>
                   <div className="flex justify-between text-stone-600">
-                    <span>ডেলিভারি চার্জ:</span>
-                    <span>৳{deliveryCharge}</span>
+                    <span>ডেলিভারি চার্জ ({COURIER_SERVICES[selectedCourier].banglaName}):</span>
+                    <span className="font-semibold text-emerald-900">৳{deliveryCharge}</span>
                   </div>
                   <div className="flex justify-between text-sm font-black text-emerald-950 border-t border-amber-200/60 pt-1.5">
                     <span>সর্বমোট প্রদেয় বিল:</span>
-                    <span className="text-amber-800 font-mono text-base">৳{grandTotal}</span>
+                    <span className="text-amber-900 font-mono text-base font-black">৳{grandTotal}</span>
                   </div>
                 </div>
 
+                {/* Submit & 1-Click WhatsApp Buttons */}
                 <div className="space-y-2 pt-1">
                   <button
                     disabled={loading}
                     type="submit"
-                    className="w-full bg-emerald-800 hover:bg-emerald-900 active:scale-95 text-white font-extrabold py-3 rounded-xl transition shadow-md disabled:bg-emerald-700/60"
+                    className="w-full bg-gradient-to-r from-emerald-800 via-emerald-700 to-emerald-900 hover:from-emerald-900 hover:to-emerald-950 active:scale-95 text-white font-black py-3.5 sm:py-4 rounded-2xl transition shadow-xl shadow-emerald-950/20 disabled:bg-emerald-700/60 flex items-center justify-center gap-2 text-sm sm:text-base cursor-pointer"
                   >
-                    {loading ? "অর্ডার সাবমিট হচ্ছে..." : "অর্ডার কনফার্ম করুন (৳" + grandTotal + ")"}
+                    <CheckCircle2 className="w-5 h-5 text-amber-300" />
+                    <span>{loading ? "অর্ডার সাবমিট হচ্ছে..." : `অর্ডার নিশ্চিত করুন (৳${grandTotal})`}</span>
                   </button>
+
                   <button
                     type="button"
                     onClick={handleWhatsAppOrder}
-                    className="w-full bg-green-600 hover:bg-green-700 active:scale-95 text-white font-bold py-2.5 rounded-xl transition shadow-sm flex items-center justify-center gap-2 text-xs sm:text-sm"
+                    className="w-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 active:scale-95 text-emerald-800 font-bold py-2.5 rounded-xl transition shadow-xs flex items-center justify-center gap-2 text-xs sm:text-sm cursor-pointer"
                   >
-                    <MessageCircle className="w-4 h-4 fill-white" />
-                    WhatsApp-এ সরাসরি অর্ডার পাঠান
+                    <MessageCircle className="w-4 h-4 fill-emerald-600 text-emerald-600" />
+                    <span>WhatsApp-এ সরাসরি অর্ডার দিন (১ ক্লিকে)</span>
                   </button>
+
+                  {/* Trust Assurances */}
+                  <div className="flex items-center justify-center gap-2 sm:gap-3 text-[11px] text-stone-500 font-medium pt-1">
+                    <span>🛡️ কোনো অগ্রিম টাকা নেই</span>
+                    <span>•</span>
+                    <span>📦 দেখে মূল্য পরিশোধ</span>
+                    <span>•</span>
+                    <span>⚡ দ্রুত ডেলিভারি</span>
+                  </div>
                 </div>
               </form>
             )}
@@ -1646,24 +2067,32 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
         </div>
       )}
 
-      {/* Floating Bottom Cart Button */}
+      {/* ==================== FLOATING BOTTOM QUICK CHECKOUT BAR (MOBILE & DESKTOP) ==================== */}
       {totalCartCount > 0 && !isCartOpen && (
-        <div className="fixed bottom-6 right-6 z-40 animate-bounceOnce">
-          <button
-            onClick={() => setIsCartOpen(true)}
-            className="bg-emerald-950 hover:bg-emerald-900 text-white pl-4 pr-3 py-2.5 rounded-2xl shadow-2xl border border-emerald-700/80 flex items-center gap-2.5 transition hover:scale-105 active:scale-95 group"
-          >
-            <div className="relative">
-              <ShoppingCart className="w-4 h-4 text-amber-300" />
-              <span className="absolute -top-2 -right-2.5 bg-amber-400 text-emerald-950 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center">
-                {totalCartCount}
-              </span>
+        <div className="fixed bottom-4 left-3 right-3 sm:left-auto sm:right-6 sm:bottom-6 z-40 animate-fadeIn">
+          <div className="bg-emerald-950/95 backdrop-blur-md text-white px-4 py-3 rounded-2xl shadow-2xl border border-emerald-700/80 flex items-center justify-between gap-3 max-w-lg mx-auto sm:max-w-none">
+            <div className="flex items-center gap-2.5">
+              <div className="relative">
+                <ShoppingCart className="w-5 h-5 text-amber-300" />
+                <span className="absolute -top-2 -right-2.5 bg-amber-400 text-emerald-950 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+                  {totalCartCount}
+                </span>
+              </div>
+              <div className="leading-tight">
+                <span className="text-[10px] text-stone-300 block">মোট প্রদেয় বিল</span>
+                <span className="text-sm font-black text-amber-300 font-mono">৳{subTotal}</span>
+              </div>
             </div>
-            <span className="text-xs font-bold text-emerald-100">কার্ট দেখুন</span>
-            <span className="text-xs font-black text-amber-300 bg-emerald-900/80 px-2 py-0.5 rounded-lg border border-emerald-800">
-              ৳{subTotal}
-            </span>
-          </button>
+
+            <button
+              onClick={() => setIsCartOpen(true)}
+              className="bg-amber-400 hover:bg-amber-500 active:scale-95 text-emerald-950 font-black px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <ShoppingBag className="w-4 h-4 text-emerald-950" />
+              <span>অর্ডার সম্পন্ন করুন</span>
+              <span className="text-base font-bold">→</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -1676,6 +2105,294 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
         >
           <ArrowUp className="w-4 h-4" />
         </button>
+      )}
+
+      {/* ==================== INTERACTIVE COURIER RATE CALCULATOR MODAL ==================== */}
+      {isCourierModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-stone-200 overflow-hidden my-auto animate-scaleUp">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 bg-gradient-to-r from-emerald-950 via-emerald-900 to-stone-900 text-white flex justify-between items-start gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="bg-amber-400 text-emerald-950 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase">
+                    নাটোর ডিসপ্যাচ হাব
+                  </span>
+                  <span className="text-emerald-200 text-xs font-semibold flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                    প্রেরক: নাটোর, রাজশাহী বিভাগ
+                  </span>
+                </div>
+                <h3 className="text-base sm:text-xl font-black text-white flex items-center gap-2">
+                  <Calculator className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                  <span>কুরিয়ার চার্জ ক্যালকুলেটর ও তুলনামূলক তালিকা</span>
+                </h3>
+                <p className="text-xs text-stone-300">
+                  পাঠাও • স্টেডফাস্ট • সুন্দরবন • এস এ পরিবহন — পণ্যের সাইজ অনুযায়ী চার্জের সহজ তুলনা
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCourierModalOpen(false)}
+                className="text-stone-300 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body (Scrollable) */}
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 text-stone-800">
+              {/* 1. Destination Selector */}
+              <div>
+                <label className="text-xs sm:text-sm font-bold text-stone-700 mb-2 flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4 text-emerald-700" />
+                  <span>১. আপনার ডেলিভারি গন্তব্য নির্বাচন করুন:</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {(["LOCAL", "DHAKA", "OUTSIDE"] as DeliveryAreaKey[]).map((areaKey) => {
+                    const isSel = modalArea === areaKey;
+                    const areaInfo = DELIVERY_AREAS[areaKey];
+                    return (
+                      <button
+                        key={areaKey}
+                        type="button"
+                        onClick={() => setModalArea(areaKey)}
+                        className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                          isSel
+                            ? "border-emerald-700 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-600/30 shadow-sm"
+                            : "border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs sm:text-sm">{areaInfo.name}</span>
+                          {isSel && <Check className="w-4 h-4 text-emerald-700 font-bold" />}
+                        </div>
+                        <span className="text-[11px] text-stone-500 block mt-0.5 leading-tight">
+                          {areaInfo.subtitle}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 2. Product Size Presets & Custom Weight */}
+              <div>
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-1.5 mb-2">
+                  <label className="text-xs sm:text-sm font-bold text-stone-700 flex items-center gap-1.5">
+                    <Scale className="w-4 h-4 text-emerald-700" />
+                    <span>২. পণ্যের সাইজ / ওজন নির্বাচন করুন:</span>
+                  </label>
+                  <span className="text-xs text-emerald-800 font-black bg-emerald-100 px-2.5 py-0.5 rounded-full w-fit">
+                    বর্তমান নির্বাচিত ওজন: {modalWeight.toFixed(1)} কেজি
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {POPULAR_PRODUCT_PRESETS.map((preset, idx) => {
+                    const isSel = Math.abs(modalWeight - preset.weightKg) < 0.05 && !modalCustomWeight;
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setModalWeight(preset.weightKg);
+                          setModalCustomWeight("");
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                          isSel
+                            ? "border-amber-600 bg-amber-50/90 text-amber-950 ring-2 ring-amber-500/40 shadow-xs font-bold"
+                            : "border-stone-200 bg-stone-50/70 hover:bg-stone-100 text-stone-700 font-medium"
+                        }`}
+                      >
+                        <span className="block text-xs font-bold leading-tight">{preset.label}</span>
+                        <span className="block text-[10px] text-stone-500 mt-0.5">{preset.desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Weight Input Option */}
+                <div className="mt-3 flex items-center gap-2 max-w-sm">
+                  <span className="text-xs font-semibold text-stone-600 whitespace-nowrap">অন্য কোনো ওজন:</span>
+                  <div className="relative flex-1">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0.5"
+                      max="100"
+                      placeholder="যেমন: ৩.৫"
+                      value={modalCustomWeight}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setModalCustomWeight(val);
+                        const num = parseFloat(val);
+                        if (!isNaN(num) && num > 0) {
+                          setModalWeight(num);
+                        }
+                      }}
+                      className="w-full border border-stone-300 rounded-xl px-3 py-1.5 text-xs focus:ring-2 focus:ring-emerald-700 focus:outline-none"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-stone-400 font-semibold pointer-events-none">
+                      কেজি
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Live 4-Courier Comparison Result Cards */}
+              <div>
+                <div className="flex justify-between items-center mb-2.5">
+                  <h4 className="text-xs sm:text-sm font-black text-emerald-950 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    <span>৪টি কুরিয়ারের তুলনামূলক চার্জ তালিকা ({modalWeight.toFixed(1)} কেজি ওজনে):</span>
+                  </h4>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {compareAllCouriers(modalArea, modalWeight).map((res) => {
+                    const isLowest = res.isLowestPrice;
+                    const isHome = res.courier.shortDeliveryType === "হোম ডেলিভারি";
+
+                    return (
+                      <div
+                        key={res.courier.id}
+                        className={`rounded-2xl border p-3.5 flex flex-col justify-between transition-all relative ${
+                          isLowest
+                            ? "border-amber-400 bg-amber-50/70 shadow-md ring-1 ring-amber-400/50"
+                            : "border-stone-200 bg-white hover:border-stone-300 shadow-xs"
+                        }`}
+                      >
+                        {isLowest && (
+                          <div className="absolute -top-2.5 right-3 bg-amber-500 text-emerald-950 text-[9px] font-black px-2 py-0.5 rounded-full shadow-xs">
+                            সবচেয়ে সাশ্রয়ী
+                          </div>
+                        )}
+
+                        <div>
+                          <div className="flex items-start justify-between gap-1 mb-1.5">
+                            <div>
+                              <h5 className="font-black text-stone-900 text-sm leading-tight">
+                                {res.courier.banglaName}
+                              </h5>
+                              <span className="text-[10px] text-stone-400 block">{res.courier.name}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                isHome
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-amber-100 text-amber-900"
+                              }`}
+                            >
+                              {res.courier.shortDeliveryType}
+                            </span>
+                            <span className="text-[10px] text-stone-500">⏱️ {res.courier.duration}</span>
+                          </div>
+
+                          {/* Price Tag */}
+                          <div className="my-2 p-2 bg-stone-50 rounded-xl border border-stone-200/80 text-center">
+                            <span className="text-[10px] text-stone-500 block">মোট চার্জ</span>
+                            <span className="text-xl sm:text-2xl font-black text-emerald-950 font-mono">
+                              ৳{res.charge}
+                            </span>
+                          </div>
+
+                          <p className="text-[10px] text-stone-600 leading-tight mb-2">
+                            {res.explanation}
+                          </p>
+
+                          <div className="text-[10px] text-emerald-900 bg-emerald-50/80 p-2 rounded-xl mb-3 border border-emerald-200/50">
+                            <span className="font-bold">উপযুক্ত:</span> {res.courier.bestFor}
+                          </div>
+                        </div>
+
+                        {/* Order with this courier CTA */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCourier(res.courier.id);
+                            setDeliveryArea(modalArea);
+                            setIsCourierModalOpen(false);
+                            setIsCartOpen(true);
+                            addToast(
+                              "success",
+                              `পছন্দের কুরিয়ার হিসেবে "${res.courier.banglaName}" সিলেক্ট করা হয়েছে।`
+                            );
+                          }}
+                          className="w-full bg-emerald-800 hover:bg-emerald-900 text-white font-black py-2 rounded-xl text-xs transition shadow-xs flex items-center justify-center gap-1 cursor-pointer active:scale-95"
+                        >
+                          <span>এই কুরিয়ারে অর্ডার করুন</span>
+                          <span className="text-sm">→</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 4. Practical Courier Guidelines & Tips */}
+              <div className="bg-stone-50 rounded-2xl p-4 border border-stone-200 space-y-2.5 text-xs">
+                <h4 className="font-bold text-stone-900 flex items-center gap-1.5 text-sm">
+                  <Award className="w-4 h-4 text-amber-500" />
+                  <span>নাটোর থেকে পার্সেল প্রেরণের গুরুত্বপূর্ণ পরামর্শ:</span>
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-stone-600">
+                  <div className="space-y-1">
+                    <p className="font-bold text-emerald-950 flex items-center gap-1">
+                      🍯 মধু ও গুড়ের জন্য (১-৩ কেজি):
+                    </p>
+                    <p className="text-[11px] leading-relaxed">
+                      মধু ও গুড়ের ছোট পার্সেল সরাসরি বাসায় পেতে <span className="font-bold text-stone-800">Steadfast Courier</span> বা <span className="font-bold text-stone-800">Pathao</span> বেছে নিন। তারা আপনার দেওয়া ঠিকানায় পৌঁছে দিয়ে ক্যাশ অন ডেলিভারিতে টাকা গ্রহণ করবে।
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="font-bold text-amber-950 flex items-center gap-1">
+                      🥭 আম ও ভারী ফলের জন্য (৫-২০ কেজি):
+                    </p>
+                    <p className="text-[11px] leading-relaxed">
+                      আমের ক্যারেট বা কার্টুনে <span className="font-bold text-amber-900">সুন্দরবন কুরিয়ার</span> বা <span className="font-bold text-sky-900">এস এ পরিবহন</span> শাখা ডেলিভারি নিলে কুরিয়ার খরচ অর্ধেকেরও কম হয়। যেমন ১০ কেজি আমে সুন্দরবনে মাত্র ৳১৫০ খরচ, যেখানে হোম ডেলিভারিতে ৳৩০০+ খরচ হতো!
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-stone-200/80 flex flex-wrap items-center justify-between gap-2 text-[11px] text-stone-500">
+                  <span>📍 সকল পণ্য নাটোর থেকে সরাসরি পাঠানো হয়।</span>
+                  <span>🛡️ ১০০% খাঁটি পণ্য ও নিরাপদ প্যাকেজিংয়ের নিশ্চয়তা।</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3.5 bg-stone-100 border-t border-stone-200 flex justify-between items-center gap-3">
+              <span className="text-xs text-stone-600 font-medium hidden sm:inline">
+                প্রয়োজনে যেকোনো তথ্যের জন্য WhatsApp-এ মেসেজ দিন
+              </span>
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsCourierModalOpen(false)}
+                  className="px-4 py-2 bg-stone-200 hover:bg-stone-300 text-stone-700 font-bold rounded-xl text-xs transition cursor-pointer"
+                >
+                  বন্ধ করুন
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCourierModalOpen(false);
+                    setIsCartOpen(true);
+                  }}
+                  className="px-5 py-2 bg-emerald-800 hover:bg-emerald-900 text-white font-black rounded-xl text-xs transition shadow-sm cursor-pointer"
+                >
+                  কার্টে গিয়ে অর্ডার করুন →
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Footer */}
