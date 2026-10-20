@@ -14,7 +14,18 @@ async function requireAdmin() {
 }
 
 // ─── 1. টেন্যান্ট লোড করা ────────────────────────────────────────────────────
-export async function getOrInitTenant(slug: string = "khati-shombhar") {
+export async function getOrInitTenant(rawSlug: string = "khati-shombhar") {
+  // Sanitize slug
+  const cleanSlug = rawSlug.trim().toLowerCase();
+  const isInvalid =
+    !cleanSlug ||
+    cleanSlug.includes(".") ||
+    cleanSlug.includes("\\") ||
+    cleanSlug.includes("/") ||
+    ["favicon.ico", "favicon.png", "icon.png", "icon.svg", "image", "admin", "api"].includes(cleanSlug);
+
+  const slug = isInvalid ? "khati-shombhar" : cleanSlug;
+
   let tenant = await prisma.tenant.findUnique({
     where: { slug },
     include: {

@@ -16,10 +16,48 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://shomvar.smanas.net"),
   title: "খাঁটি সম্ভার (Khati Shombhar) - ১০০% প্রাকৃতিক ও খাঁটি উপাদানের সম্ভার",
   description:
-    "১০০% খাঁটি প্রাকৃতিক মধু, রাজশাহীর মিষ্টি আম ও খাঁটি খেজুরের গুড়ের বিশ্বস্ত প্রতিষ্ঠান।",
+    "১০০% খাঁটি প্রাকৃতিক মধু, রাজশাহীর মিষ্টি আম ও খাঁটি খেজুরের গুড়ের বিশ্বস্ত প্রতিষ্ঠান। সারাদেশে ক্যাশ অন ডেলিভারি।",
+  openGraph: {
+    title: "খাঁটি সম্ভার — খাঁটি মধু, রাজশাহীর মিষ্টি আম ও খাঁটি গুড়ের বিশ্বস্ত প্রতিষ্ঠান",
+    description:
+      "১০০% খাঁটি প্রাকৃতিক মধু, রাজশাহীর মিষ্টি আম ও খাঁটি খেজুরের গুড় সরাসরি বাগান ও মৌয়াল থেকে। সারাদেশে ক্যাশ অন ডেলিভারি।",
+    url: "https://shomvar.smanas.net",
+    siteName: "খাঁটি সম্ভার",
+    locale: "bn_BD",
+    type: "website",
+    images: [
+      {
+        url: "/og-image.jpg",
+        width: 1376,
+        height: 768,
+        type: "image/jpeg",
+        alt: "খাঁটি সম্ভার - ১০০% প্রাকৃতিক খাদ্য সম্ভার",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "খাঁটি সম্ভার — খাঁটি মধু, রাজশাহীর মিষ্টি আম ও খাঁটি গুড়ের বিশ্বস্ত প্রতিষ্ঠান",
+    description:
+      "১০০% খাঁটি প্রাকৃতিক মধু, রাজশাহীর মিষ্টি আম ও খাঁটি খেজুরের গুড় সরাসরি বাগান ও মৌয়াল থেকে। সারাদেশে ক্যাশ অন ডেলিভারি।",
+    images: ["/og-image.jpg"],
+  },
+  verification: {
+    google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || undefined,
+  },
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icon.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon.ico", sizes: "any" },
+    ],
+    apple: [
+      { url: "/apple-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
 };
 
 export default function RootLayout({

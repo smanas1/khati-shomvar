@@ -29,14 +29,25 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       },
     });
 
+    const invalidSlugs = new Set(["admin", "api", "favicon.ico", "favicon.png", "icon.png", "icon.svg", "apple-icon.png", "manifest.webmanifest", "image"]);
     for (const tenant of tenants) {
+      if (
+        !tenant.slug ||
+        invalidSlugs.has(tenant.slug) ||
+        tenant.slug.includes(".") ||
+        tenant.slug.includes("\\") ||
+        tenant.slug.includes("/")
+      ) {
+        continue;
+      }
+
       routes.push({
         url: `${baseUrl}/${tenant.slug}`,
         lastModified: now,
         changeFrequency: "daily",
         priority: 0.9,
         images: tenant.products.map((p) =>
-          p.image?.startsWith("http") ? p.image : `${baseUrl}${p.image || "/products/honey.jpg"}`
+          p.image?.startsWith("http") ? p.image : `${baseUrl}${p.image || "/og-image.jpg"}`
         ),
       });
     }

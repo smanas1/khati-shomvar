@@ -47,9 +47,10 @@ export async function generateMetadata(): Promise<Metadata> {
       type: "website",
       images: [
         {
-          url: `${baseUrl}/products/honey.jpg`,
-          width: 1200,
-          height: 630,
+          url: `${baseUrl}/og-image.jpg`,
+          width: 1376,
+          height: 768,
+          type: "image/jpeg",
           alt: "খাঁটি সম্ভার - ১০০% প্রাকৃতিক খাদ্যোপাদান",
         },
       ],
@@ -58,7 +59,7 @@ export async function generateMetadata(): Promise<Metadata> {
       card: "summary_large_image",
       title,
       description,
-      images: [`${baseUrl}/products/honey.jpg`],
+      images: [`${baseUrl}/og-image.jpg`],
     },
     robots: {
       index: true,

@@ -587,8 +587,11 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
       <header className="bg-white/95 backdrop-blur-md border-b border-stone-200 sticky top-0 z-30 shadow-sm transition-all">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex justify-between items-center gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-800 to-emerald-950 flex items-center justify-center text-white text-xl shadow-md border border-emerald-700/50">
-              🌿
+            <div className="relative w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-600 via-emerald-800 to-emerald-950 flex items-center justify-center text-white shadow-md shadow-emerald-950/20 border border-emerald-500/30 group">
+              <Leaf className="w-5.5 h-5.5 text-emerald-200 group-hover:rotate-6 transition-transform duration-300 drop-shadow" />
+              <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 flex items-center justify-center shadow-sm">
+                <Sparkles className="w-2.5 h-2.5 text-emerald-950" />
+              </div>
             </div>
             <div>
               <h1 className="text-xl sm:text-2xl font-black text-emerald-950 tracking-tight flex items-center gap-2">

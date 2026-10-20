@@ -19,7 +19,7 @@ export async function generateMetadata({
   const description =
     tenant.tagline ||
     "১০০% খাঁটি প্রাকৃতিক মধু, রাজশাহীর মিষ্টি আম ও খাঁটি খেজুরের গুড়ের বিশ্বস্ত প্রতিষ্ঠান। সারাদেশে হোম ডেলিভারি ও ক্যাশ অন ডেলিভারি। shomvar.smanas.net";
-  const shareImage = tenant.products[0]?.image || "/products/honey.jpg";
+  const shareImage = tenant.products[0]?.image || "/og-image.jpg";
 
   return {
     title,
@@ -56,8 +56,8 @@ export async function generateMetadata({
       images: [
         {
           url: shareImage.startsWith("http") ? shareImage : `${baseUrl}${shareImage}`,
-          width: 1200,
-          height: 630,
+          width: 1376,
+          height: 768,
           alt: `${tenant.name} — প্রাকৃতিক খাদ্যোপাদান`,
         },
       ],
