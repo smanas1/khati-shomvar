@@ -212,7 +212,7 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
   const [showSpecialNote, setShowSpecialNote] = useState(false);
   const [showPaymentPicker, setShowPaymentPicker] = useState(false);
   const [savedInfoLoaded, setSavedInfoLoaded] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState("COD");
+  const [paymentMethod, setPaymentMethod] = useState("ক্যাশ অন ডেলিভারি (COD)");
 
   // Courier Calculator Modal States
   const [isCourierModalOpen, setIsCourierModalOpen] = useState(false);
@@ -322,17 +322,11 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
 
   const effectiveCartWeightKg = totalCartWeightKg > 0 ? totalCartWeightKg : 1.0;
 
-  // Auto-select smartest courier if user hasn't manually overridden it
+  // Default courier is always Steadfast (হোম ডেলিভারি) unless customer explicitly selects another
   useEffect(() => {
     if (manualCourierOverride || cart.length === 0) return;
-    const hasMango = cart.some((i) => i.category === "আম" || i.name.includes("আম"));
-    const isHeavy = totalCartWeightKg >= 3.5;
-    if (hasMango || isHeavy) {
-      setSelectedCourier("sundarban");
-    } else {
-      setSelectedCourier("steadfast");
-    }
-  }, [cart, totalCartWeightKg, manualCourierOverride]);
+    setSelectedCourier("steadfast");
+  }, [cart, manualCourierOverride]);
 
   const currentCourierCalculation = calculateCourierCharge(
     selectedCourier,
@@ -529,9 +523,9 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
       return;
     }
 
-    // Phone validation (Bangladesh 11 digit format)
+    // Phone validation (Bangladesh 11 digit format: 017, 018, 019, 016, 015, 014, 013 + Teletalk 015)
     const cleanPhone = custPhone.replace(/\D/g, "");
-    if (!/^01[3-9]\d{8}$/.test(cleanPhone)) {
+    if (!/^01[3-9]\d{8}$/.test(cleanPhone) && !/^01[2]\d{8}$/.test(cleanPhone)) {
       addToast("error", "অনুগ্রহ করে সঠিক ১১ ডিজিটের মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।");
       return;
     }
@@ -656,34 +650,48 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
       </div>
 
       {/* Top Customer Announcement Bar */}
-      <div className="bg-emerald-950 text-emerald-200 text-xs px-4 py-2.5 border-b border-emerald-900 shadow-inner">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-2 text-center sm:text-left">
-          <div className="flex items-center gap-2">
-            <span className="bg-amber-400 text-emerald-950 font-black px-2.5 py-0.5 rounded-full text-[11px] shadow-sm flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-emerald-950" />
-              ১০০% খাঁটি ও নির্ভেজাল
-            </span>
-            <span className="text-emerald-100 font-medium">
-              সরাসরি মৌয়াল ও রাজশাহীর নিজস্ব বাগান থেকে সংগৃহীত প্রাকৃতিক খাদ্যোপাদান
-            </span>
+      <div className="bg-emerald-950 text-emerald-200 text-xs px-3 sm:px-4 py-2 border-b border-emerald-900 shadow-inner">
+        <div className="max-w-7xl mx-auto">
+          {/* Mobile Single-line View */}
+          <div className="sm:hidden flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 truncate">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+              <span className="text-[11px] font-bold text-amber-300 truncate">
+                ১০০% খাঁটি ও নির্ভেজাল খাদ্যোপাদান
+              </span>
+            </div>
+            <a
+              href={`https://wa.me/${tenant.whatsapp}`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 text-[11px] font-bold text-emerald-200 bg-emerald-900/90 hover:bg-emerald-800 px-2.5 py-0.5 rounded-full border border-emerald-700/80 transition flex-shrink-0"
+            >
+              <Phone className="w-3 h-3 text-amber-400" />
+              <span>যোগাযোগ</span>
+            </a>
           </div>
 
-          <div className="flex items-center gap-3 sm:gap-4 text-xs font-semibold text-emerald-200">
-            <button
-              type="button"
-              onClick={() => setIsCourierModalOpen(true)}
-              className="flex items-center gap-1.5 bg-emerald-900/90 hover:bg-emerald-800 text-amber-300 px-2.5 py-1 rounded-full border border-emerald-700/80 transition cursor-pointer"
-            >
-              <Calculator className="w-3.5 h-3.5 text-amber-400" />
-              <span>নাটোর কুরিয়ার ক্যালকুলেটর</span>
-            </button>
-            <div className="hidden md:flex items-center gap-1.5">
-              <Truck className="w-3.5 h-3.5 text-amber-400" />
-              <span>সারাদেশে ডেলিভারি</span>
+          {/* Desktop Rich Layout */}
+          <div className="hidden sm:flex justify-between items-center gap-4 text-left">
+            <div className="flex items-center gap-2">
+              <span className="bg-amber-400 text-emerald-950 font-black px-2.5 py-0.5 rounded-full text-[11px] shadow-sm flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-emerald-950" />
+                ১০০% খাঁটি ও নির্ভেজাল
+              </span>
+              <span className="text-emerald-100 font-medium">
+                সরাসরি মৌয়াল ও রাজশাহীর নিজস্ব বাগান থেকে সংগৃহীত প্রাকৃতিক খাদ্যোপাদান
+              </span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <Phone className="w-3.5 h-3.5 text-amber-400" />
-              <span>হটলাইন: {formatPhoneDisplay(tenant.whatsapp)}</span>
+
+            <div className="flex items-center gap-4 text-xs font-semibold text-emerald-200 flex-shrink-0">
+              <div className="flex items-center gap-1.5">
+                <Truck className="w-3.5 h-3.5 text-amber-400" />
+                <span>সারাদেশে দ্রুত ডেলিভারি</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-amber-400" />
+                <span>হটলাইন: {formatPhoneDisplay(tenant.whatsapp)}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -691,37 +699,40 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
 
       {/* Main Header */}
       <header className="bg-white/95 backdrop-blur-md border-b border-stone-200 sticky top-0 z-30 shadow-sm transition-all">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex justify-between items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className="relative w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-600 via-emerald-800 to-emerald-950 flex items-center justify-center text-white shadow-md shadow-emerald-950/20 border border-emerald-500/30 group">
-              <Leaf className="w-5.5 h-5.5 text-emerald-200 group-hover:rotate-6 transition-transform duration-300 drop-shadow" />
-              <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 flex items-center justify-center shadow-sm">
-                <Sparkles className="w-2.5 h-2.5 text-emerald-950" />
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 sm:py-3.5 flex justify-between items-center gap-2 sm:gap-4">
+          {/* Logo & Brand Info */}
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="relative w-9 h-9 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-br from-emerald-600 via-emerald-800 to-emerald-950 flex items-center justify-center text-white shadow-md shadow-emerald-950/20 border border-emerald-500/30 group flex-shrink-0">
+              <Leaf className="w-4.5 h-4.5 sm:w-5.5 sm:h-5.5 text-emerald-200 group-hover:rotate-6 transition-transform duration-300 drop-shadow" />
+              <div className="absolute -top-1 -right-1 w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-amber-400 flex items-center justify-center shadow-sm">
+                <Sparkles className="w-2 sm:w-2.5 h-2 sm:h-2.5 text-emerald-950" />
               </div>
             </div>
-            <div>
-              <h1 className="text-xl sm:text-2xl font-black text-emerald-950 tracking-tight flex items-center gap-2">
-                {tenant.name}
-                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-200">
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-2xl font-black text-emerald-950 tracking-tight flex items-center gap-1.5 truncate">
+                <span>{tenant.name}</span>
+                <span className="hidden sm:inline-block text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-200">
                   খাঁটি সম্ভার
                 </span>
               </h1>
-              <p className="text-xs text-stone-500 font-medium line-clamp-1">
+              <p className="text-[11px] sm:text-xs text-stone-500 font-medium truncate">
                 {tenant.tagline || "১০০% প্রাকৃতিক ও খাঁটি উপাদানের বিশ্বস্ত প্রতিষ্ঠান"}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          {/* Action CTAs */}
+          <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
             <button
               type="button"
               onClick={() => setIsCourierModalOpen(true)}
-              className="inline-flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs hover:scale-[1.02] cursor-pointer"
+              title="নাটোর কুরিয়ার ডেলিভারি চার্জ জানুন"
+              aria-label="কুরিয়ার চার্জ"
+              className="inline-flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-950 border border-amber-300 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer whitespace-nowrap"
             >
-              <Calculator className="w-3.5 h-3.5 text-amber-700" />
+              <Calculator className="w-3.5 h-3.5 text-amber-800 flex-shrink-0" />
               <span className="hidden sm:inline">নাটোর ডেলিভারি চার্জ</span>
-              <span className="sm:hidden">চার্জ জানুন</span>
-              <span className="bg-amber-400 text-emerald-950 text-[10px] px-1.5 py-0.2 rounded-full font-black">৪ কুরিয়ার</span>
+              <span className="sm:hidden text-[11px]">কুরিয়ার চার্জ</span>
             </button>
 
             <a
@@ -736,12 +747,12 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
 
             <button
               onClick={() => setIsCartOpen(true)}
-              className="relative inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-emerald-950 font-black px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm shadow-md transition-all border border-amber-600/30 cursor-pointer"
+              className="relative inline-flex items-center gap-1 sm:gap-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-emerald-950 font-black px-3 sm:px-4 py-1.5 sm:py-2.5 rounded-xl text-xs sm:text-sm shadow-md transition-all border border-amber-600/30 cursor-pointer whitespace-nowrap flex-shrink-0"
             >
-              <ShoppingCart className="w-4 h-4 text-emerald-950" />
-              <span>কার্ট</span>
+              <ShoppingCart className="w-4 h-4 text-emerald-950 flex-shrink-0" />
+              <span className="text-xs sm:text-sm">কার্ট</span>
               {totalCartCount > 0 && (
-                <span className="bg-emerald-950 text-amber-300 text-xs px-2 py-0.5 rounded-full font-bold ml-1 shadow animate-pulse">
+                <span className="bg-emerald-950 text-amber-300 text-[10px] sm:text-xs px-1.5 py-0.2 rounded-full font-bold shadow">
                   {totalCartCount}
                 </span>
               )}
@@ -1011,7 +1022,9 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
           <div className="relative w-full md:w-72">
             <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
-              type="text"
+              type="search"
+              id="product-search"
+              aria-label="পণ্য খুঁজুন"
               placeholder="পণ্য বা বিবরণ খুঁজুন..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -1628,18 +1641,18 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white w-full max-w-md h-full p-6 flex flex-col justify-between overflow-y-auto shadow-2xl border-l border-stone-200"
+            className="bg-white w-full max-w-md h-full p-4 sm:p-6 flex flex-col justify-between overflow-y-auto shadow-2xl border-l border-stone-200"
           >
             <div>
               {/* Cart Drawer Header */}
-              <div className="flex justify-between items-center border-b border-stone-100 pb-4">
+              <div className="flex justify-between items-center border-b border-stone-100 pb-3 sm:pb-4">
                 <div className="flex items-center gap-2">
                   <ShoppingBag className="w-5 h-5 text-emerald-800" />
-                  <h3 className="font-extrabold text-xl text-stone-900">অর্ডার ও চেকআউট</h3>
+                  <h3 className="font-extrabold text-lg sm:text-xl text-stone-900">অর্ডার ও চেকআউট</h3>
                 </div>
                 <button
                   onClick={() => setIsCartOpen(false)}
-                  className="p-1.5 rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition"
+                  className="p-1.5 rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition cursor-pointer"
                   aria-label="Close cart"
                 >
                   <X className="w-6 h-6" />
@@ -1654,12 +1667,12 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
                   <p className="text-xs text-stone-400 mt-1">দয়া করে স্টোর থেকে পণ্য যোগ করুন।</p>
                 </div>
               ) : (
-                <div className="divide-y divide-stone-100 my-4 max-h-[44vh] overflow-y-auto pr-1 space-y-1">
+                <div className="divide-y divide-stone-100 my-3 sm:my-4 max-h-[36vh] sm:max-h-[42vh] overflow-y-auto pr-1 space-y-1">
                   {cart.map((c) => (
-                    <div key={c.cartKey} className="py-3.5 space-y-2.5">
+                    <div key={c.cartKey} className="py-3 space-y-2">
                       <div className="flex justify-between items-start gap-2.5">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-xl overflow-hidden bg-stone-100 border border-stone-200 flex-shrink-0 flex items-center justify-center relative">
+                          <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden bg-stone-100 border border-stone-200 flex-shrink-0 flex items-center justify-center relative">
                             {c.image ? (
                               <Image
                                 src={c.image}
@@ -1673,8 +1686,8 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
                             )}
                           </div>
                           <div>
-                            <div className="font-bold text-stone-900 text-sm leading-snug">{c.name}</div>
-                            <div className="text-xs text-stone-500 font-medium mt-0.5">
+                            <div className="font-bold text-stone-900 text-xs sm:text-sm leading-snug">{c.name}</div>
+                            <div className="text-[11px] text-stone-500 font-medium mt-0.5">
                               একক মূল্য: <span className="font-bold text-emerald-900">৳{c.price}</span>
                             </div>
                           </div>
@@ -1683,55 +1696,61 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
                         <button
                           type="button"
                           onClick={() => removeFromCart(c.cartKey)}
-                          className="text-stone-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition"
+                          className="text-stone-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition cursor-pointer"
                           title="কার্ট থেকে মুছুন"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
 
-                      {/* Interactive Size Selector & Quantity Counter */}
-                      <div className="flex items-center justify-between gap-2 bg-stone-50 p-2.5 rounded-xl border border-stone-200/80">
-                        {/* Size Dropdown */}
-                        <div className="flex items-center gap-1.5">
-                          <label className="text-[11px] font-bold text-stone-600 whitespace-nowrap">সাইজ:</label>
-                          <select
-                            value={c.unit}
-                            onChange={(e) => changeCartItemVariant(c.cartKey, e.target.value)}
-                            className="bg-white border border-stone-300 text-emerald-950 text-xs font-bold rounded-lg px-2 py-1 focus:ring-2 focus:ring-emerald-700 focus:outline-none shadow-sm cursor-pointer"
-                          >
-                            {c.variants.map((v) => (
-                              <option key={v.unit} value={v.unit}>
-                                {v.unit} — ৳{v.price}
-                              </option>
-                            ))}
-                          </select>
+                      {/* Responsive Size Selector & Quantity Counter */}
+                      <div className="bg-stone-50 p-2.5 rounded-xl border border-stone-200/80 space-y-2">
+                        {/* Row 1: Size dropdown & Item Subtotal */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                            <label className="text-[11px] font-bold text-stone-600 whitespace-nowrap">সাইজ:</label>
+                            <select
+                              value={c.unit}
+                              onChange={(e) => changeCartItemVariant(c.cartKey, e.target.value)}
+                              className="bg-white border border-stone-300 text-emerald-950 text-xs font-bold rounded-lg px-2 py-1 focus:ring-2 focus:ring-emerald-700 focus:outline-none shadow-sm cursor-pointer w-full max-w-[170px] truncate"
+                            >
+                              {c.variants.map((v) => (
+                                <option key={v.unit} value={v.unit}>
+                                  {v.unit} — ৳{v.price}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Line Total (Never truncated) */}
+                          <div className="text-right flex-shrink-0">
+                            <span className="text-[10px] text-stone-400 block font-normal leading-tight">মোট</span>
+                            <span className="text-sm font-black text-emerald-950 font-mono leading-tight whitespace-nowrap">
+                              ৳{c.price * c.qty}
+                            </span>
+                          </div>
                         </div>
 
-                        {/* Quantity Counter */}
-                        <div className="flex items-center gap-1.5 bg-white px-1.5 py-0.5 rounded-lg border border-stone-200 shadow-sm">
-                          <button
-                            type="button"
-                            onClick={() => updateQty(c.cartKey, -1)}
-                            className="w-6 h-6 bg-stone-100 hover:bg-stone-200 rounded flex items-center justify-center font-bold text-stone-700 transition active:scale-95 text-xs"
-                          >
-                            -
-                          </button>
-                          <span className="w-6 text-center text-xs font-black text-stone-900">{c.qty}</span>
-                          <button
-                            type="button"
-                            onClick={() => updateQty(c.cartKey, 1)}
-                            className="w-6 h-6 bg-stone-100 hover:bg-stone-200 rounded flex items-center justify-center font-bold text-stone-700 transition active:scale-95 text-xs"
-                          >
-                            +
-                          </button>
-                        </div>
-
-                        {/* Line Total */}
-                        <div className="text-right">
-                          <span className="text-xs font-black text-emerald-950 font-mono">
-                            ৳{c.price * c.qty}
-                          </span>
+                        {/* Row 2: Quantity Stepper */}
+                        <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-stone-200/60 text-xs">
+                          <span className="text-[11px] text-stone-500 font-medium">পরিমাণ পরিবর্তন:</span>
+                          <div className="flex items-center gap-1.5 bg-white px-2 py-0.5 rounded-lg border border-stone-200 shadow-sm">
+                            <button
+                              type="button"
+                              onClick={() => updateQty(c.cartKey, -1)}
+                              className="w-6 h-6 bg-stone-100 hover:bg-stone-200 rounded flex items-center justify-center font-bold text-stone-700 transition active:scale-95 text-xs cursor-pointer"
+                            >
+                              -
+                            </button>
+                            <span className="w-8 text-center text-xs font-black text-stone-900">{c.qty} টি</span>
+                            <button
+                              type="button"
+                              onClick={() => updateQty(c.cartKey, 1)}
+                              className="w-6 h-6 bg-stone-100 hover:bg-stone-200 rounded flex items-center justify-center font-bold text-stone-700 transition active:scale-95 text-xs cursor-pointer"
+                            >
+                              +
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1742,7 +1761,7 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
 
             {/* Checkout Form */}
             {cart.length > 0 && (
-              <form onSubmit={handleCheckout} className="space-y-3.5 border-t border-stone-200 pt-4 text-sm">
+              <form onSubmit={handleCheckout} className="space-y-3.5 border-t border-stone-200 pt-4 pb-8 sm:pb-4 text-sm">
                 {/* Saved Info Banner (If Returning Customer) */}
                 {savedInfoLoaded && (
                   <div className="bg-emerald-50 border border-emerald-300/80 rounded-2xl p-3 flex items-center justify-between gap-2 shadow-xs animate-fadeIn">
@@ -1993,9 +2012,9 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
                 {showPaymentPicker && (
                   <div className="grid grid-cols-3 gap-2 pt-1 animate-fadeIn">
                     {[
-                      { key: "COD", label: "ক্যাশ অন ডেলিভারি" },
-                      { key: "bKash", label: "বিকাশ" },
-                      { key: "Nagad", label: "নগদ" },
+                      { key: "ক্যাশ অন ডেলিভারি (COD)", label: "ক্যাশ অন ডেলিভারি" },
+                      { key: "বিকাশ (bKash)", label: "বিকাশ" },
+                      { key: "নগদ (Nagad)", label: "নগদ" },
                     ].map((pm) => {
                       const isSel = paymentMethod === pm.key;
                       return (
@@ -2079,8 +2098,8 @@ export default function StorefrontClient({ tenant }: { tenant: TenantData }) {
                 </span>
               </div>
               <div className="leading-tight">
-                <span className="text-[10px] text-stone-300 block">মোট প্রদেয় বিল</span>
-                <span className="text-sm font-black text-amber-300 font-mono">৳{subTotal}</span>
+                <span className="text-[10px] text-stone-300 block">পণ্য + ডেলিভারি</span>
+                <span className="text-sm font-black text-amber-300 font-mono">৳{grandTotal > 0 ? grandTotal : subTotal}</span>
               </div>
             </div>
 

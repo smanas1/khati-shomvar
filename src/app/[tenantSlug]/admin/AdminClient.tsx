@@ -9,6 +9,7 @@ import {
   updateOrderStatusAction,
   updateTenantSettingsAction,
   logoutAdminAction,
+  sendTestNotificationAction,
 } from "@/app/actions";
 import {
   Package,
@@ -137,6 +138,25 @@ export default function AdminClient({ tenant }: { tenant: TenantData }) {
     const id = Date.now();
     setToasts((prev) => [...prev, { id, msg, type }]);
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4500);
+  }
+
+  // ── Notification testing state
+  const [isTestingNotif, setIsTestingNotif] = useState(false);
+  async function handleSendTestNotification() {
+    setIsTestingNotif(true);
+    try {
+      const res = await sendTestNotificationAction();
+      if (res.success) {
+        addToast(res.message, "success");
+      } else {
+        addToast(res.message, "error");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "টেস্ট নোটিফিকেশন পাঠাতে ত্রুটি হয়েছে!";
+      addToast(msg, "error");
+    } finally {
+      setIsTestingNotif(false);
+    }
   }
 
   // ── Order status controlled state (fix defaultValue bug)
@@ -621,6 +641,55 @@ export default function AdminClient({ tenant }: { tenant: TenantData }) {
                     {isPending ? "আপডেট হচ্ছে..." : "সেটিংস সেভ করুন"}
                   </button>
                 </form>
+              </div>
+            </div>
+
+            {/* Instant Order Notification Alerts (Telegram & WhatsApp) */}
+            <div className="bg-gradient-to-br from-slate-900 to-emerald-950 text-white rounded-2xl border border-emerald-800/50 shadow-md overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-emerald-800/40 bg-emerald-950/40">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-300 flex items-center justify-center">
+                    <Bell className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-sm text-white">অর্ডার ইনস্ট্যান্ট নোটিফিকেশন</h3>
+                    <p className="text-[10px] text-emerald-300">Telegram & WhatsApp অ্যালার্ট</p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold bg-amber-400 text-emerald-950 px-2 py-0.5 rounded-full shadow-sm">
+                  অটোমেশন
+                </span>
+              </div>
+              <div className="p-5 space-y-4 text-xs">
+                <div className="bg-emerald-900/40 border border-emerald-700/30 rounded-xl p-3 text-[11px] leading-relaxed text-emerald-100">
+                  <p className="font-bold text-amber-300 mb-1 flex items-center gap-1.5">
+                    <span>💡</span> টেলিগ্রাম কেন সেরা?
+                  </p>
+                  <p>
+                    টেলিগ্রাম বট <strong>১০০% ফ্রি</strong> এবং আনলিমিটেড। একটি টেলিগ্রাম গ্রুপ বানিয়ে বটটি অ্যাড করলেই <strong>একাধিক ব্যক্তি বা মোবাইল নম্বরে</strong> সাথে সাথে রিয়েল-টাইম সাউন্ড অ্যালার্ট চলে যাবে।
+                  </p>
+                </div>
+
+                <div className="space-y-1.5 text-[11px] text-emerald-200">
+                  <div className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    <span>কনফিগারেশন: <code className="bg-black/30 px-1 py-0.5 rounded text-amber-300">.env</code> ফাইল</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    <span>সাপোর্ট: সিঙ্গেল চ্যাট বা আনলিমিটেড মেম্বার গ্রুপ</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isTestingNotif}
+                  onClick={handleSendTestNotification}
+                  className="w-full bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-emerald-950 font-bold py-2.5 rounded-xl transition shadow flex items-center justify-center gap-2 disabled:opacity-50 text-xs"
+                >
+                  <Send className={`w-3.5 h-3.5 ${isTestingNotif ? "animate-spin" : ""}`} />
+                  <span>{isTestingNotif ? "টেস্ট মেসেজ পাঠানো হচ্ছে..." : "🚀 টেস্ট অ্যালার্ট পাঠান"}</span>
+                </button>
               </div>
             </div>
           </div>

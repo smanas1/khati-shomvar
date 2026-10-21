@@ -4,6 +4,7 @@
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
+import { dispatchOrderNotification } from "@/lib/notifications";
 
 // ─── Auth Helper ───────────────────────────────────────────────────────────────
 async function requireAdmin() {
@@ -192,6 +193,23 @@ export async function placeOrderAction(payload: {
     });
   }
 
+  // Trigger instant notification to Telegram (multiple admins / group) and WhatsApp
+  try {
+    await dispatchOrderNotification({
+      orderNumber: order.orderNumber,
+      customerName: payload.customerName,
+      customerPhone: payload.customerPhone,
+      shippingAddress: payload.shippingAddress,
+      deliveryArea: payload.deliveryArea,
+      deliveryCharge: payload.deliveryCharge,
+      totalAmount,
+      paymentMethod: payload.paymentMethod,
+      items: payload.items,
+    });
+  } catch (err) {
+    console.error("Notification dispatch failed:", err);
+  }
+
   revalidatePath(`/${payload.slug}`);
   revalidatePath(`/${payload.slug}/admin`);
   return { success: true, orderNumber: order.orderNumber };
@@ -251,4 +269,45 @@ export async function logoutAdminAction() {
 export async function isAdminAuthenticated(): Promise<boolean> {
   const cookieStore = await cookies();
   return cookieStore.get("khati_admin_session")?.value === "authenticated";
+}
+
+// ─── 11. টেস্ট নোটিফিকেশন পাঠানো (Admin) ──────────────────────────────────
+export async function sendTestNotificationAction(): Promise<{ success: boolean; message: string }> {
+  await requireAdmin();
+  const testPayload = {
+    orderNumber: "TEST-" + Math.floor(1000 + Math.random() * 9000),
+    customerName: "পরীক্ষামূলক কাস্টমার",
+    customerPhone: "01700000000",
+    shippingAddress: "নাটোর সদর, নাটোর (টেস্ট মেসেজ)",
+    deliveryArea: "নাটোর লোকাল - সুন্দরবন কুরিয়ার",
+    deliveryCharge: 60,
+    totalAmount: 1310,
+    paymentMethod: "ক্যাশ অন ডেলিভারি (COD)",
+    notes: "এটি সিস্টেম কনফিগারেশন চেক করার জন্য একটি টেস্ট নোটিফিকেশন।",
+    items: [
+      {
+        productName: "১০০% খাঁটি প্রাকৃতিক মধু",
+        unit: "১ লিটার",
+        quantity: 1,
+        unitPrice: 1250,
+      },
+    ],
+  };
+
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const waInstance = process.env.WHATSAPP_INSTANCE_ID;
+
+  if (!botToken && !waInstance) {
+    return {
+      success: false,
+      message: "টেলিগ্রাম বটের টোকেন বা চ্যাট আইডি (.env ফাইলে) কনফিগার করা নেই। অনুগ্রহ করে .env ফাইল পূরণ করুন।",
+    };
+  }
+
+  await dispatchOrderNotification(testPayload);
+  return {
+    success: true,
+    message: "টেস্ট নোটিফিকেশন সফলভাবে পাঠানো হয়েছে! আপনার টেলিগ্রাম বা হোয়াটসঅ্যাপ চেক করুন।",
+  };
 }

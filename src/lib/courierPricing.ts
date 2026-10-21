@@ -261,8 +261,11 @@ export function calculateCourierCharge(
           // Heavy Carton / Fruit (Mango Crate 5kg, 10kg, 20kg)
           // Base booking: ৳30 + ৳12/kg (Dhaka) or ৳13/kg (Outside)
           const perKgRate = area === "DHAKA" ? 12 : 13;
-          charge = 30 + Math.ceil(safeWeight) * perKgRate;
-          explanation = `ভারী কার্টুন বেস ৳৩০ + (${Math.ceil(safeWeight)} কেজি × ৳${perKgRate}) = ৳${charge}`;
+          const billedKg = Math.ceil(safeWeight);
+          const rawCharge = 30 + billedKg * perKgRate;
+          // Round to neat 10s (e.g. ৳100 instead of ৳102) with min ৳100 for counter parcels
+          charge = Math.max(100, Math.round(rawCharge / 10) * 10);
+          explanation = `ভারী কার্টুন বেস ৳৩০ + (${billedKg} কেজি × ৳${perKgRate}) = ৳${charge}`;
         }
       }
       break;
